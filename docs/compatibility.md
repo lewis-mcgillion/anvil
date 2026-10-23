@@ -7,9 +7,8 @@ Anvil's public contracts are:
 - the event/recording JSON schemas (`schema_version`, ANVIL-003),
 - the YAML suite format (`apiVersion: anvil.dev/v1alpha1`).
 
-This policy governs how those contracts evolve. Contract tests in
-`internal/contracts` and CI (`buf lint`, spec validation, generated-code
-builds, field-tag goldens) enforce the mechanical parts.
+This policy governs how those contracts evolve. Python schema tests,
+TypeScript code generation, and CI enforce the mechanical parts.
 
 ## Version identifiers
 
@@ -54,11 +53,9 @@ values.
 - Changing the scope required by an existing operation, except widening a
   previously over-privileged operation, which must be documented here.
 
-The golden file `internal/contracts/testdata/runner_proto_tags.golden`
-pins every protobuf (message, field, number) triple; any renumber or
-removal fails CI. Additive changes require regenerating the golden with
-`UPDATE_GOLDEN=1 go test ./internal/contracts/...` in the same PR as the
-proto change, plus an entry in this file.
+The runner protobuf tag assignments are frozen in the protocol history.
+Changes require explicit compatibility review and Python conformance tests,
+plus an entry in this file.
 
 ## Authorization storage
 
@@ -71,10 +68,9 @@ prevents capture keys from being combined with read or replay access.
 ## Process for contract changes
 
 1. Update `api/openapi.yaml` and/or `proto/anvil/runner/v1/runner.proto`.
-2. Regenerate clients: `make generate` (Go types/client, Go protobuf,
-   TypeScript types). Generated code must compile.
-3. Run `buf lint`, `buf breaking` (against `main`), and
-   `go test ./internal/contracts/...`.
+2. Regenerate TypeScript clients using `make generate`. Generated types must compile.
+3. Run the Python schema suite and TypeScript contract tests. Check runner
+   protobuf breaking changes before publishing an altered protocol.
 4. Update `docs/api-contract.md` and this document in the same change.
 5. Contract changes ship with fixtures or conformance coverage (ANVIL-006)
    before dependent features land.
@@ -82,6 +78,18 @@ prevents capture keys from being combined with read or replay access.
 The PostgreSQL job lease store is introduced by the additive
 `migrations/0002_jobs.sql` migration. It records attempts and interrupted
 worker outcomes without rewriting existing event or recording data.
+
+Migration `0003_run_metadata.sql` adds nullable columns for capture agent,
+adapter, adapter version and trace identifiers. Old runs remain readable;
+new capture requests persist these fields. Apply migrations in order:
+`0001_core`, `0002_authorization`, `0002_jobs`,
+`0002_administration`, then `0003_run_metadata`.
+Apply `0004_seal_jobs` afterwards to enable durable asynchronous sealing.
+Apply `0005_agent_versions` next to register digest-pinned OCI agent images.
+Agent versions are project-scoped and enforce the immutable SHA-256 image
+reference format in PostgreSQL. The registration endpoint does not execute
+images or grant execution permissions. Any future replay runner must enforce
+isolation and fixture requirements independently before launching a workload.
 
 ## Sunset and migration
 
