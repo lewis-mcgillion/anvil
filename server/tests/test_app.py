@@ -16,6 +16,7 @@ def test_chunked_request_body_limit():
             response = await client.post("/v1/projects", content=chunks())
             assert response.status_code == 413
             assert response.json()["code"] == "payload_too_large"
+            assert response.json()["request_id"] == response.headers["X-Request-ID"]
 
     asyncio.run(check())
 

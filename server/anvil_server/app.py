@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 import os
+import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -64,7 +65,7 @@ class BodyLimitMiddleware:
         headers = dict(scope.get("headers", []))
         content_length = headers.get(b"content-length", b"")
         if content_length.isdigit() and int(content_length) > max_body:
-            await self._reject(send)
+            await self._reject(send, scope)
             return
         total = 0
         chunks = []
@@ -73,7 +74,7 @@ class BodyLimitMiddleware:
             if message["type"] == "http.request":
                 total += len(message.get("body", b""))
                 if total > max_body:
-                    await self._reject(send)
+                    await self._reject(send, scope)
                     return
             chunks.append(message)
             if message["type"] == "http.disconnect" or not message.get("more_body", False):
@@ -87,10 +88,15 @@ class BodyLimitMiddleware:
         await self.application(scope, replay_receive, send)
 
     @staticmethod
-    async def _reject(send: Send):
-        body = b'{"type":"about:blank","title":"Payload too large","status":413,"code":"payload_too_large"}'
+    async def _reject(send: Send, scope: Scope):
+        request_id = scope.setdefault("state", {}).get("request_id") or str(uuid.uuid4())
+        body = json.dumps({"type": "https://anvil.dev/problems/payload-too-large",
+                           "title": "Payload too large", "status": 413,
+                           "detail": "Request body exceeds configured limit",
+                           "code": "payload_too_large", "request_id": request_id}).encode()
         await send({"type": "http.response.start", "status": 413,
-                    "headers": [(b"content-type", b"application/problem+json")]})
+                    "headers": [(b"content-type", b"application/problem+json"),
+                                (b"x-request-id", request_id.encode())]})
         await send({"type": "http.response.body", "body": body})
 
 
