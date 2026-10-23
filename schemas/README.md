@@ -53,6 +53,17 @@ records fixture policy (`strict`), model mode and budgets so that re-execution
 evidence is auditable; nothing in this contract permits a replay path to invoke
 production tools.
 
+## Consumption
+
+- **Go**: `internal/events` embeds these documents (copied to
+  `internal/events/schemas/v1` for `go:embed`; a test enforces the copies are
+  byte-identical) and exposes `Validate(schema, data)` with an explicit
+  `*ValidationError`.
+- **Python**: `sdk/python/anvil_schema` loads them from the repository and
+  raises `ValidationError`.
+- **TypeScript**: `web/schemas` (`@anvil/schemas`) loads them from the
+  repository and throws `ValidationError`.
+
 ## Validation errors
 
 Each language validator raises/returns an explicit error naming the schema id

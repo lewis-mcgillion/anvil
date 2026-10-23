@@ -9,11 +9,10 @@
 package events
 
 import (
+	"embed"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
+	"io/fs"
 	"strings"
 	"sync"
 
@@ -50,21 +49,17 @@ func (e *ValidationError) Error() string {
 	return fmt.Sprintf("anvil schema %s v1: validation failed: %s", e.Schema, e.Details)
 }
 
+// frozenSchemas embeds the pinned v1 schema documents into the binary, so
+// validation never depends on the caller's filesystem layout.
+//
+//go:embed schemas/v1
+var frozenSchemas embed.FS
+
 var (
 	compileOnce sync.Once
 	compileErr  error
 	compiled    = map[SchemaName]*jsonschema.Schema{}
 )
-
-// schemaDir returns the absolute path of the frozen schemas/v1 directory,
-// resolved relative to this source file so tests and binaries work from any
-// working directory.
-func schemaDir() string {
-	_, thisFile, _, _ := runtime.Caller(0)
-	// internal/events/schema.go -> repo root is two directories up.
-	root := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
-	return filepath.Join(root, "schemas", "v1")
-}
 
 func compile(name SchemaName) (*jsonschema.Schema, error) {
 	compileOnce.Do(func() {
@@ -85,16 +80,15 @@ func loadAll() error {
 	c.DefaultDraft(jsonschema.Draft2020)
 	c.AssertFormat()
 
-	dir := schemaDir()
-	entries, err := os.ReadDir(dir)
+	entries, err := fs.ReadDir(frozenSchemas, "schemas/v1")
 	if err != nil {
-		return fmt.Errorf("read schema dir: %w", err)
+		return fmt.Errorf("read embedded schemas: %w", err)
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".schema.json") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		data, err := frozenSchemas.ReadFile("schemas/v1/" + entry.Name())
 		if err != nil {
 			return fmt.Errorf("read schema %s: %w", entry.Name(), err)
 		}

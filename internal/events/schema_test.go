@@ -125,6 +125,34 @@ func TestSchemasCompile(t *testing.T) {
 	}
 }
 
+// TestEmbeddedSchemasMatchRepo guards against drift: the embedded copies
+// under internal/events/schemas/v1 must be byte-identical to the
+// authoritative frozen documents in schemas/v1.
+func TestEmbeddedSchemasMatchRepo(t *testing.T) {
+	_, thisFile, _, _ := runtime.Caller(0)
+	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	entries, err := os.ReadDir(filepath.Join(repoRoot, "schemas", "v1"))
+	if err != nil {
+		t.Fatalf("read repo schemas: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".schema.json") {
+			continue
+		}
+		want, err := os.ReadFile(filepath.Join(repoRoot, "schemas", "v1", entry.Name()))
+		if err != nil {
+			t.Fatalf("read repo schema %s: %v", entry.Name(), err)
+		}
+		got, err := frozenSchemas.ReadFile("schemas/v1/" + entry.Name())
+		if err != nil {
+			t.Fatalf("embedded schema %s missing: %v", entry.Name(), err)
+		}
+		if string(got) != string(want) {
+			t.Fatalf("embedded schema %s differs from schemas/v1/%s; refresh internal/events/schemas/v1", entry.Name(), entry.Name())
+		}
+	}
+}
+
 func TestValidationErrorMessage(t *testing.T) {
 	err := Validate(SchemaSeal, []byte(`{"schema_version":"1"}`))
 	if err == nil {
