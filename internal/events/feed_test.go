@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -99,7 +100,7 @@ func TestEventFeedHTTPResume(t *testing.T) {
 	}
 	request := httptest.NewRequest(http.MethodGet, "/watch", nil)
 	request.Header.Set("Last-Event-ID", event.EventID)
-	response := httptest.NewRecorder()
+	response := &safeResponseWriter{header: make(http.Header)}
 	ctx, cancel := context.WithCancel(request.Context())
 	request = request.WithContext(ctx)
 	go feed.ServeHTTP(response, request)
@@ -109,11 +110,31 @@ func TestEventFeedHTTPResume(t *testing.T) {
 	if err := feed.Publish(next); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 100 && !strings.Contains(response.Body.String(), "next-id"); i++ {
+	for i := 0; i < 100 && !strings.Contains(response.body(), "next-id"); i++ {
 		time.Sleep(time.Millisecond)
 	}
 	cancel()
-	if !strings.Contains(response.Body.String(), "id: next-id") {
-		t.Fatalf("response = %q, want resumed event", response.Body.String())
+	if !strings.Contains(response.body(), "id: next-id") {
+		t.Fatalf("response = %q, want resumed event", response.body())
 	}
+}
+
+type safeResponseWriter struct {
+	mu       sync.Mutex
+	header   http.Header
+	bodyData strings.Builder
+}
+
+func (w *safeResponseWriter) Header() http.Header { return w.header }
+func (w *safeResponseWriter) Write(data []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.bodyData.Write(data)
+}
+func (w *safeResponseWriter) WriteHeader(int) {}
+func (w *safeResponseWriter) Flush()          {}
+func (w *safeResponseWriter) body() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.bodyData.String()
 }
