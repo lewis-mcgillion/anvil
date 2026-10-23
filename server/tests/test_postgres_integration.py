@@ -485,6 +485,16 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
         status = await client.get(f"{deletion_url}/{deletion.json()['deletion_id']}", headers=headers)
         assert status.status_code == 200, status.text
         assert status.json()["status"] == "queued"
+        job_url = f"/v1/jobs/{deletion.json()['job_id']}"
+        job_status = await client.get(job_url, params={"project_id": str(PROJECT)}, headers=headers)
+        assert job_status.status_code == 200
+        assert job_status.json()["status"] == "queued"
+        assert (await client.get(job_url, headers=headers)).status_code == 400
+        assert (await client.get(job_url, params={"project_id":
+            "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401
+        cancelled = await client.post(f"{job_url}:cancel", params={"project_id": str(PROJECT)}, headers=headers)
+        assert cancelled.status_code == 200
+        assert cancelled.json()["status"] == "cancelled"
         assert (await client.post(deletion_url, json={"target_kind": "suite", "target_id": str(new_uuid7())},
                                   headers=headers)).status_code == 400
 

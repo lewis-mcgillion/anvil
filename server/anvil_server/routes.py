@@ -656,6 +656,13 @@ async def get_job(request: Request, project_id: UUID, job_id: UUID):
     return json.loads(json.dumps(result, default=str)) if result else failure(request, 404, "not_found")
 
 
+@router.get("/jobs/{job_id}")
+async def get_job_by_id(request: Request, job_id: UUID, project_id: UUID | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await get_job(request, project_id, job_id)
+
+
 @router.post("/projects/{project_id}/jobs/{job_id}:cancel")
 async def cancel_job(request: Request, project_id: UUID, job_id: UUID):
     engine, error = await scoped(request, project_id, "admin")
@@ -666,6 +673,13 @@ async def cancel_job(request: Request, project_id: UUID, job_id: UUID):
     except LeaseLost:
         return failure(request, 409, "conflict")
     return json.loads(json.dumps(result, default=str)) if result else failure(request, 404, "not_found")
+
+
+@router.post("/jobs/{job_id}:cancel")
+async def cancel_job_by_id(request: Request, job_id: UUID, project_id: UUID | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await cancel_job(request, project_id, job_id)
 
 
 @router.post("/projects/{project_id}/deletions", status_code=202)
