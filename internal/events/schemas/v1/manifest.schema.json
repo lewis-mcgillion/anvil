@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anvil.dev/schemas/v1/manifest.json",
+  "title": "Anvil recording manifest (schema version 1)",
+  "description": "Immutable manifest of a sealed recording bundle, and the provenance envelope for re-execution candidates (docs/architecture.md: manifest includes image digest, adapter, fixtures, model mode, fault plan, budgets and outcomes).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "recording_id",
+    "run_id",
+    "project_id",
+    "created_at",
+    "capture_completeness",
+    "execution_outcome",
+    "adapter",
+    "adapter_version",
+    "event_count",
+    "stream_count",
+    "artifact_count",
+    "payload_sha256",
+    "source"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+    "recording_id": { "$ref": "defs.json#/$defs/uuidv7" },
+    "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+    "project_id": { "$ref": "defs.json#/$defs/uuidv7" },
+    "created_at": { "$ref": "defs.json#/$defs/timestamp" },
+    "capture_completeness": {
+      "description": "A sealed recording is either sealed_complete or sealed_incomplete.",
+      "type": "string",
+      "enum": ["sealed_complete", "sealed_incomplete"]
+    },
+    "execution_outcome": { "$ref": "defs.json#/$defs/executionOutcome" },
+    "adapter": { "type": "string", "minLength": 1 },
+    "adapter_version": { "type": "string", "minLength": 1 },
+    "event_count": { "type": "integer", "minimum": 0 },
+    "stream_count": { "type": "integer", "minimum": 1 },
+    "artifact_count": { "type": "integer", "minimum": 0 },
+    "payload_sha256": {
+      "description": "SHA-256 over the canonical (RFC 8785) recording payload.",
+      "$ref": "defs.json#/$defs/sha256"
+    },
+    "artifact_manifest": {
+      "description": "Hashes of every artifact included in the bundle.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["artifact_id", "name", "sha256"],
+        "properties": {
+          "artifact_id": { "$ref": "defs.json#/$defs/uuidv7" },
+          "name": { "type": "string", "minLength": 1 },
+          "sha256": { "$ref": "defs.json#/$defs/sha256" }
+        }
+      }
+    },
+    "capture_gaps": {
+      "description": "Gaps acknowledged at seal time. Empty for sealed_complete recordings.",
+      "type": "array",
+      "items": { "$ref": "capture-gap.json" }
+    },
+    "source": {
+      "description": "Provenance: a direct capture, or a candidate produced by re-execution. Re-execution provenance (image digest, adapter, fixtures, model mode, fault plan, budgets) is mandatory for re-execution candidates.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "capture" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "reexecution"],
+          "properties": {
+            "kind": { "const": "reexecution" },
+            "reexecution": { "$ref": "#/$defs/reexecutionProvenance" }
+          }
+        }
+      ]
+    },
+    "redaction_policy": {
+      "description": "Redaction policy evidence recorded at seal time.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sdk_policy_version", "server_policy_version"],
+      "properties": {
+        "sdk_policy_version": { "type": "string", "minLength": 1 },
+        "server_policy_version": { "type": "string", "minLength": 1 },
+        "pointers": {
+          "type": "array",
+          "items": { "$ref": "defs.json#/$defs/jsonPointer" },
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "reexecutionProvenance": {
+      "description": "Provenance of a re-execution candidate run. Re-execution NEVER invokes original production tools; fixtures substitute recorded responses.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reexecution_id",
+        "recording_id",
+        "agent_version_id",
+        "image_digest",
+        "adapter",
+        "adapter_version",
+        "model_mode",
+        "fixture_policy",
+        "seed",
+        "budgets"
+      ],
+      "properties": {
+        "reexecution_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "recording_id": {
+          "description": "Immutable source recording.",
+          "$ref": "defs.json#/$defs/uuidv7"
+        },
+        "agent_version_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "image_digest": {
+          "description": "OCI image digest of the runner environment. Mutable tags are rejected.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/_=-]{0,61}:?[0-9a-f]{64}$"
+        },
+        "adapter": { "type": "string", "minLength": 1 },
+        "adapter_version": { "type": "string", "minLength": 1 },
+        "model_mode": { "$ref": "defs.json#/$defs/modelMode" },
+        "fixture_policy": {
+          "description": "Fixture matching policy. Strict matching fails closed on unmatched or ambiguous invocations.",
+          "type": "string",
+          "enum": ["strict"]
+        },
+        "initial_state": {
+          "description": "Explicit initial state supplied to the candidate run.",
+          "type": "object"
+        },
+        "seed": { "type": "integer", "minimum": 0 },
+        "fault_plan": { "$ref": "#/$defs/faultPlan" },
+        "budgets": { "$ref": "#/$defs/budgets" }
+      }
+    },
+    "faultPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fault_plan_version", "faults"],
+      "properties": {
+        "fault_plan_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "faults": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["fault_id", "fault_type", "target_invocation_path"],
+            "properties": {
+              "fault_id": { "type": "string", "minLength": 1 },
+              "fault_type": {
+                "type": "string",
+                "enum": [
+                  "tool.exception",
+                  "tool.timeout",
+                  "tool.empty_response",
+                  "tool.malformed_response",
+                  "json_pointer.patch",
+                  "stream.truncate",
+                  "model.provider_failure",
+                  "prompt.injection"
+                ]
+              },
+              "target_invocation_path": {
+                "description": "Logical invocation path the fault is matched against.",
+                "type": "string",
+                "minLength": 1
+              },
+              "parameters": {},
+              "applied": {
+                "description": "Whether the fault was reached and applied; persisted as evidence either way.",
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "budgets": {
+      "description": "Hard resource budgets. Defaults: 120 s wall time, 20 model calls, 100 tool calls, 20k input / 10k output tokens, USD 1.00 estimated spend.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_wall_time_seconds",
+        "max_model_calls",
+        "max_tool_calls",
+        "max_input_tokens",
+        "max_output_tokens",
+        "max_estimated_model_spend_usd"
+      ],
+      "properties": {
+        "max_wall_time_seconds": { "type": "integer", "minimum": 1 },
+        "max_model_calls": { "type": "integer", "minimum": 0 },
+        "max_tool_calls": { "type": "integer", "minimum": 0 },
+        "max_input_tokens": { "type": "integer", "minimum": 0 },
+        "max_output_tokens": { "type": "integer", "minimum": 0 },
+        "max_estimated_model_spend_usd": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

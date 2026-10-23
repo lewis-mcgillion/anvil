@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "run_id": "0190a8b0-7000-7a00-8000-000000000001",
+  "project_id": "0190a8b0-7000-7a00-8000-000000000100",
+  "created_at": "2026-01-01T12:00:00.000Z",
+  "capture_completeness": "failed",
+  "execution_outcome": "sealed_complete",
+  "adapter": "google-adk",
+  "adapter_version": "1.2.3"
+}

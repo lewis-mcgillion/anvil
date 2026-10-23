@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "stream_id": "0190a8b0-7000-7a00-8000-000000000002",
+  "run_id": "0190a8b0-7000-7a00-8000-000000000001",
+  "kind": "tool",
+  "parent_stream_id": "0190a8b0-7000-7a00-8000-000000000009",
+  "logical_path": "/agent/inventory/tool/0",
+  "last_sequence": 40,
+  "open": false
+}

@@ -1,0 +1,72 @@
+name: Schema contract
+
+# Cross-language contract tests for the frozen v1 event and recording
+# schemas (ANVIL-003). Go, Python and TypeScript validators must agree on
+# the shared positive and negative fixtures in fixtures/schema/v1.
+
+on:
+  push:
+    paths:
+      - "schemas/**"
+      - "fixtures/**"
+      - "internal/events/**"
+      - "sdk/python/**"
+      - "web/schemas/**"
+      - "go.mod"
+      - "go.sum"
+      - "vendor/**"
+      - ".github/workflows/schema-contract.yml"
+  pull_request:
+    paths:
+      - "schemas/**"
+      - "fixtures/**"
+      - "internal/events/**"
+      - "sdk/python/**"
+      - "web/schemas/**"
+      - "go.mod"
+      - "go.sum"
+      - "vendor/**"
+      - ".github/workflows/schema-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go validator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      # Modules are vendored; tests run hermetically with -mod=vendor.
+      - run: go test -mod=vendor ./...
+
+  python:
+    name: Python validator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[test]"
+        working-directory: sdk/python
+      - run: python -m pytest -q
+        working-directory: sdk/python
+
+  typescript:
+    name: TypeScript validator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+        working-directory: web/schemas
+      - run: npm run typecheck
+        working-directory: web/schemas
+      - run: npm test
+        working-directory: web/schemas
