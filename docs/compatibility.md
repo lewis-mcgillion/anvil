@@ -85,6 +85,11 @@ new capture requests persist these fields. Apply migrations in order:
 `0001_core`, `0002_authorization`, `0002_jobs`,
 `0002_administration`, then `0003_run_metadata`.
 Apply `0004_seal_jobs` afterwards to enable durable asynchronous sealing.
+Apply `0005_agent_versions` next to register digest-pinned OCI agent images.
+Agent versions are project-scoped and enforce the immutable SHA-256 image
+reference format in PostgreSQL. The registration endpoint does not execute
+images or grant execution permissions. Any future replay runner must enforce
+isolation and fixture requirements independently before launching a workload.
 
 ## Sunset and migration
 

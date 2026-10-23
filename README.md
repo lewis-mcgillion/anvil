@@ -24,6 +24,8 @@ random secret of at least 16 characters for cursor continuity across restarts.
 For asynchronous sealing, start a Python worker per project with
 `ANVIL_WORKER_PROJECT_ID` set to that project's UUID and run
 `python -m anvil_server.worker` from the installed `server` package.
+Apply all migrations through `0005_agent_versions` before using the
+agent-version registration endpoint. Registering an image does not run it.
 
 The API container runs Python and does not require Go. Capture, PostgreSQL event
 storage, sealing, immutable recording retrieval, and read-only projection have
