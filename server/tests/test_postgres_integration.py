@@ -146,6 +146,21 @@ async def test_expired_cancelled_lease_never_requeues(engine):
 
 
 @pytest.mark.asyncio
+async def test_cancellation_fences_worker_success_and_heartbeat(engine):
+    queue = JobQueue(engine, timedelta(seconds=30))
+    job_id, token = new_uuid7(), new_uuid7()
+    await queue.create(PROJECT, job_id, "export")
+    await queue.acquire_job(PROJECT, job_id, token)
+    assert (await queue.cancel(PROJECT, job_id))["status"] == "cancelling"
+    with pytest.raises(LeaseLost):
+        await queue.complete(PROJECT, job_id, token, "succeeded")
+    with pytest.raises(LeaseLost):
+        await queue.heartbeat(PROJECT, job_id, token)
+    await queue.complete(PROJECT, job_id, token, "cancelled")
+    assert (await queue.get(PROJECT, job_id))["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
 async def test_exhausted_lease_is_terminal_and_fenced(engine):
     queue = JobQueue(engine, timedelta(seconds=30))
     job_id, token = new_uuid7(), new_uuid7()

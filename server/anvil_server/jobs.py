@@ -93,16 +93,18 @@ class JobQueue:
         await self._leased_update(project_id, job_id, lease_token, """
             status = :status, outcome = :status, finished_at = clock_timestamp(),
             lease_token = NULL, lease_expires_at = NULL, heartbeat_at = NULL
-        """, {"status": status})
+        """, {"status": status}, allowed_states=("running",) if status != "cancelled" else ("running", "cancelling"))
 
-    async def _leased_update(self, project_id, job_id, lease_token, updates, extra):
+    async def _leased_update(self, project_id, job_id, lease_token, updates, extra,
+                             allowed_states=("running",)):
         async with project_connection(self.engine, project_id) as connection:
             result = await connection.execute(text(f"""
                 UPDATE jobs SET {updates}
                 WHERE project_id = :project AND id = :id AND lease_token = :token
-                  AND status IN ('running', 'cancelling')
+                  AND status = ANY(:allowed_states)
                   AND lease_expires_at > clock_timestamp()
-            """), {"project": project_id, "id": job_id, "token": lease_token, **extra})
+            """), {"project": project_id, "id": job_id, "token": lease_token,
+                   "allowed_states": list(allowed_states), **extra})
             if result.rowcount != 1:
                 raise LeaseLost("Lease expired or does not belong to this worker")
 
