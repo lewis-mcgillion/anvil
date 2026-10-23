@@ -32,7 +32,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install schema validators
-        run: python -m pip install -e './sdk/python[test]'
+        run: python -m pip install -e './sdk/python[test]' -e './server[test]'
 
       - name: Validate Python and TypeScript contracts
         run: |
