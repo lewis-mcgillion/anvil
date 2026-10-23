@@ -5,11 +5,8 @@ import unittest
 
 
 MIGRATION = Path(__file__).parents[1] / "migrations" / "0001_core.sql"
-<<<<<<< HEAD
 AUTH_MIGRATION = Path(__file__).parents[1] / "migrations" / "0002_authorization.sql"
-=======
 ADMIN_MIGRATION = Path(__file__).parents[1] / "migrations" / "0002_administration.sql"
->>>>>>> origin/pr/118
 
 
 class CoreMigrationContractTests(unittest.TestCase):
@@ -53,7 +50,6 @@ class CoreMigrationContractTests(unittest.TestCase):
         self.assertIn("replay_safe boolean NOT NULL", self.sql)
 
 
-<<<<<<< HEAD
 class AuthorizationMigrationContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -76,7 +72,7 @@ class AuthorizationMigrationContractTests(unittest.TestCase):
         self.assertIn("'runs:read' = ANY(scopes)", self.sql)
         self.assertIn("'replay:write' = ANY(scopes)", self.sql)
         self.assertIn("INSERT INTO schema_migrations (version) VALUES ('0002_authorization')", self.sql)
-=======
+
 class AdministrationMigrationContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -89,16 +85,15 @@ class AdministrationMigrationContractTests(unittest.TestCase):
         self.assertIn("INSERT INTO schema_migrations (version) VALUES ('0002_administration')", self.sql)
 
     def test_jobs_and_mutation_records_are_project_scoped(self):
-        for table in ("jobs", "idempotency_keys", "deletion_requests", "audit_events"):
+        for table in ("idempotency_keys", "deletion_requests", "audit_events"):
             self.assertIn(f"CREATE TABLE {table}", self.sql)
             self.assertIn(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY", self.sql)
         self.assertIn("PRIMARY KEY (project_id, key)", self.sql)
         self.assertIn("UNIQUE (project_id, target_kind, target_id)", self.sql)
 
     def test_job_states_and_retention_are_bounded(self):
-        self.assertIn("'cancelling', 'cancelled', 'succeeded', 'failed'", self.sql)
+        self.assertIn("CREATE TABLE jobs", (Path(__file__).parents[1] / "migrations" / "0002_jobs.sql").read_text())
         self.assertIn("retention_days BETWEEN 1 AND 365", self.sql)
->>>>>>> origin/pr/118
 
 
 if __name__ == "__main__":

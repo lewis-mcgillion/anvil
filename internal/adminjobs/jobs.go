@@ -1,6 +1,6 @@
 // Package jobs contains the lifecycle and idempotency rules shared by
 // asynchronous administration operations.
-package jobs
+package adminjobs
 
 import (
 	"context"

@@ -57,6 +57,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
       - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f migrations/0001_core.sql
+      - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f migrations/0002_authorization.sql
+      - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f migrations/0002_jobs.sql
+      - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f migrations/0002_administration.sql
       - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/tenant-isolation.sql
 
   typescript:
