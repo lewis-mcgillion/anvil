@@ -178,3 +178,10 @@ async def get_project_run(request: Request, project_id: uuid.UUID, run_id: uuid.
             "adapter_version": run["adapter_version"], "trace_id": run["trace_id"],
             "started_at": (run["started_at"] or run["created_at"]).isoformat(),
             "ended_at": run["finished_at"].isoformat() if run["finished_at"] else None}
+
+
+@app.get("/v1/runs/{run_id}")
+async def get_run(request: Request, run_id: uuid.UUID, project_id: uuid.UUID | None = None):
+    if project_id is None:
+        return problem(request, 400, "invalid_request", "Project scope is required")
+    return await get_project_run(request, project_id, run_id)

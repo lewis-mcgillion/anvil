@@ -427,6 +427,12 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
         assert (await client.get("/v1/runs", params={"project_id": str(
             UUID("0199b167-0000-7000-8000-000000000012"))}, headers=headers)).status_code == 401
         assert (await client.get("/v1/runs", headers=headers)).status_code == 400
+        run_response = await client.get(f"/v1/runs/{run_id}", params={"project_id": str(PROJECT)}, headers=headers)
+        assert run_response.status_code == 200, run_response.text
+        assert run_response.json()["id"] == str(run_id)
+        assert (await client.get(f"/v1/runs/{run_id}", headers=headers)).status_code == 400
+        assert (await client.get(f"/v1/runs/{run_id}", params={"project_id":
+            "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401
         recording = await client.get(f"/v1/projects/{PROJECT}/recordings/{sealed['recording_id']}", headers=headers)
         assert recording.status_code == 200, recording.text
         assert recording.json()["event_count"] == 1
