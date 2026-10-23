@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "gap_id": "0190a8b0-7000-7a00-8000-000000000301",
+  "run_id": "0190a8b0-7000-7a00-8000-000000000001",
+  "stream_id": "0190a8b0-7000-7a00-8000-000000000002",
+  "after_sequence": 38,
+  "reason": "everything_is_fine",
+  "detected_at": "2026-01-01T12:00:05.000Z",
+  "detected_by": "sdk"
+}

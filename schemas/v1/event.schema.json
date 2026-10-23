@@ -1,0 +1,350 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anvil.dev/schemas/v1/event.json",
+  "title": "Anvil event (schema version 1)",
+  "description": "One immutable captured event. Events carry a per-stream sequence and causal parents; sequences are per stream, not a global order. Serialized size MUST NOT exceed 256 KiB (enforced by ingest, not by this schema).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "run_id",
+    "stream_id",
+    "sequence",
+    "type",
+    "occurred_at",
+    "trace_id",
+    "span_id",
+    "parent_event_ids",
+    "invocation_id",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+    "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+    "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+    "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+    "sequence": {
+      "description": "Per-stream sequence number, starting at 0.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "type": { "$ref": "defs.json#/$defs/eventType" },
+    "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+    "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+    "span_id": { "$ref": "defs.json#/$defs/spanId" },
+    "parent_event_ids": {
+      "description": "Causal parent event IDs. Parents may arrive later; sealing validates them.",
+      "type": "array",
+      "items": { "$ref": "defs.json#/$defs/uuidv7" },
+      "uniqueItems": true
+    },
+    "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+    "payload": {
+      "description": "Type-specific payload, discriminated by the event type.",
+      "oneOf": [
+        { "$ref": "#/$defs/runStartedPayload" },
+        { "$ref": "#/$defs/runCompletedPayload" },
+        { "$ref": "#/$defs/runFailedPayload" },
+        { "$ref": "#/$defs/messageCreatedPayload" },
+        { "$ref": "#/$defs/modelRequestedPayload" },
+        { "$ref": "#/$defs/modelChunkPayload" },
+        { "$ref": "#/$defs/modelCompletedPayload" },
+        { "$ref": "#/$defs/modelFailedPayload" },
+        { "$ref": "#/$defs/toolRequestedPayload" },
+        { "$ref": "#/$defs/toolCompletedPayload" },
+        { "$ref": "#/$defs/toolFailedPayload" },
+        { "$ref": "#/$defs/stateCheckpointPayload" },
+        { "$ref": "#/$defs/captureGapPayload" },
+        { "$ref": "#/$defs/faultAppliedPayload" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "run.started" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/runStartedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "run.completed" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/runCompletedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "run.failed" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/runFailedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "message.created" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/messageCreatedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "model.requested" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/modelRequestedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "model.chunk" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/modelChunkPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "model.completed" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/modelCompletedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "model.failed" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/modelFailedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "tool.requested" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/toolRequestedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "tool.completed" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/toolCompletedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "tool.failed" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/toolFailedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "state.checkpoint" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/stateCheckpointPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "capture.gap" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/captureGapPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "fault.applied" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/faultAppliedPayload" } } }
+    }
+  ],
+  "$defs": {
+    "redactions": {
+      "description": "JSON Pointers of fields redacted before capture. Redaction may remove replay-critical evidence.",
+      "type": "array",
+      "items": { "$ref": "defs.json#/$defs/jsonPointer" },
+      "uniqueItems": true
+    },
+    "replaySafe": {
+      "description": "Whether this payload is safe to supply during replay/re-execution.",
+      "type": "boolean"
+    },
+    "errorInfo": {
+      "description": "Structured error detail. `type` is a stable machine-readable code.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "message"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "message": { "type": "string" },
+        "retryable": { "type": "boolean" }
+      }
+    },
+    "runStartedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent_name", "adapter", "adapter_version", "redactions", "replay_safe"],
+      "properties": {
+        "agent_name": { "type": "string", "minLength": 1 },
+        "adapter": { "type": "string", "minLength": 1 },
+        "adapter_version": { "type": "string", "minLength": 1 },
+        "input": {},
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "runCompletedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "redactions", "replay_safe"],
+      "properties": {
+        "outcome": { "const": "succeeded" },
+        "output": {},
+        "usage": { "$ref": "#/$defs/tokenUsage" },
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "runFailedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error", "redactions", "replay_safe"],
+      "properties": {
+        "error": { "$ref": "#/$defs/errorInfo" },
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "messageCreatedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "content", "redactions", "replay_safe"],
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "assistant", "system", "tool"] },
+        "content": {},
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "modelRequestedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "request", "redactions", "replay_safe"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string" },
+        "request": {
+          "description": "Canonical request body used for exact fixture matching (RFC 8785).",
+          "type": "object"
+        },
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "modelChunkPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chunk_index", "chunk", "redactions", "replay_safe"],
+      "properties": {
+        "chunk_index": { "type": "integer", "minimum": 0 },
+        "chunk": {},
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "modelCompletedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "response", "redactions", "replay_safe"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "response": {},
+        "usage": { "$ref": "#/$defs/tokenUsage" },
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "modelFailedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "error", "redactions", "replay_safe"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "error": { "$ref": "#/$defs/errorInfo" },
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "toolRequestedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool_name", "arguments", "redactions", "replay_safe"],
+      "properties": {
+        "tool_name": { "type": "string", "minLength": 1 },
+        "arguments": {},
+        "arguments_schema_digest": { "$ref": "defs.json#/$defs/sha256" },
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "toolCompletedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool_name", "arguments", "result", "redactions", "replay_safe"],
+      "properties": {
+        "tool_name": { "type": "string", "minLength": 1 },
+        "arguments": {},
+        "result": {},
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "toolFailedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool_name", "arguments", "error", "redactions", "replay_safe"],
+      "properties": {
+        "tool_name": { "type": "string", "minLength": 1 },
+        "arguments": {},
+        "error": { "$ref": "#/$defs/errorInfo" },
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "stateCheckpointPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "redactions", "replay_safe"],
+      "properties": {
+        "label": { "type": "string" },
+        "state": {},
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "captureGapPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["after_sequence", "reason", "redactions", "replay_safe"],
+      "properties": {
+        "after_sequence": {
+          "description": "Sequence number in this stream after which the gap begins.",
+          "type": "integer",
+          "minimum": -1
+        },
+        "expected_count": {
+          "description": "Number of events believed lost, if known.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["buffer_overflow", "exporter_failure", "sdk_crash", "size_limit", "timeout", "unknown"]
+        },
+        "detail": { "type": "string" },
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "const": false }
+      }
+    },
+    "faultAppliedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fault_id", "fault_type", "target_invocation_id", "redactions", "replay_safe"],
+      "properties": {
+        "fault_id": { "type": "string", "minLength": 1 },
+        "fault_type": {
+          "type": "string",
+          "enum": [
+            "tool.exception",
+            "tool.timeout",
+            "tool.empty_response",
+            "tool.malformed_response",
+            "json_pointer.patch",
+            "stream.truncate",
+            "model.provider_failure",
+            "prompt.injection"
+          ]
+        },
+        "target_invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "parameters": {},
+        "simulated_latency_ms": {
+          "description": "Simulated (not measured) latency injected by the fault.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "redactions": { "$ref": "#/$defs/redactions" },
+        "replay_safe": { "$ref": "#/$defs/replaySafe" }
+      }
+    },
+    "tokenUsage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_tokens", "output_tokens"],
+      "properties": {
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

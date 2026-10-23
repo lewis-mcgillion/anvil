@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anvil.dev/schemas/v1/defs.json",
+  "title": "Anvil shared definitions (schema version 1)",
+  "description": "Shared scalar definitions for the Anvil event and recording contract, version 1. See docs/architecture.md (Storage and versioning).",
+  "$defs": {
+    "schemaVersion": {
+      "description": "Contract version pin. Only \"1\" is defined; any other value MUST be rejected explicitly.",
+      "type": "string",
+      "const": "1"
+    },
+    "uuidv7": {
+      "description": "UUID version 7 identifier (time-ordered). The version nibble MUST be 7.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "traceId": {
+      "description": "Original OpenTelemetry trace ID (32 lowercase hex characters).",
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "spanId": {
+      "description": "Original OpenTelemetry span ID (16 lowercase hex characters).",
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$"
+    },
+    "timestamp": {
+      "description": "RFC 3339 timestamp with milliseconds and UTC offset, e.g. 2026-01-01T12:00:00.123Z.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "sha256": {
+      "description": "SHA-256 digest as 64 lowercase hex characters. Artifacts and recordings carry SHA-256 hashes.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "jsonPointer": {
+      "description": "RFC 6901 JSON Pointer (\"\" or a /-separated path).",
+      "type": "string",
+      "pattern": "^(/([^~/]|(~[01]))*)*$|^$"
+    },
+    "eventType": {
+      "description": "Closed set of event types for schema version 1 (docs/architecture.md).",
+      "type": "string",
+      "enum": [
+        "run.started",
+        "run.completed",
+        "run.failed",
+        "message.created",
+        "model.requested",
+        "model.chunk",
+        "model.completed",
+        "model.failed",
+        "tool.requested",
+        "tool.completed",
+        "tool.failed",
+        "state.checkpoint",
+        "capture.gap",
+        "fault.applied"
+      ]
+    },
+    "captureCompleteness": {
+      "description": "Capture completeness state. Distinct from execution outcome.",
+      "type": "string",
+      "enum": ["open", "sealing", "sealed_complete", "sealed_incomplete"]
+    },
+    "executionOutcome": {
+      "description": "Execution outcome state. Distinct from capture completeness.",
+      "type": "string",
+      "enum": ["running", "succeeded", "failed", "cancelled", "unknown"]
+    },
+    "modelMode": {
+      "description": "Model fixture mode for re-execution.",
+      "type": "string",
+      "enum": ["recorded", "live"]
+    }
+  }
+}

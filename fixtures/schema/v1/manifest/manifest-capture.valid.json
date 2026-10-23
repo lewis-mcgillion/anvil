@@ -1,0 +1,29 @@
+{
+  "schema_version": "1",
+  "recording_id": "0190a8b0-7000-7a00-8000-000000000401",
+  "run_id": "0190a8b0-7000-7a00-8000-000000000001",
+  "project_id": "0190a8b0-7000-7a00-8000-000000000100",
+  "created_at": "2026-01-01T12:05:00.000Z",
+  "capture_completeness": "sealed_complete",
+  "execution_outcome": "failed",
+  "adapter": "google-adk",
+  "adapter_version": "1.2.3",
+  "event_count": 42,
+  "stream_count": 3,
+  "artifact_count": 1,
+  "payload_sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+  "artifact_manifest": [
+    {
+      "artifact_id": "0190a8b0-7000-7a00-8000-000000000201",
+      "name": "screenshot.png",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "capture_gaps": [],
+  "source": { "kind": "capture" },
+  "redaction_policy": {
+    "sdk_policy_version": "1",
+    "server_policy_version": "1",
+    "pointers": ["/payload/request/messages/0/content"]
+  }
+}

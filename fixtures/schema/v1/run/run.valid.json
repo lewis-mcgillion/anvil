@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "run_id": "0190a8b0-7000-7a00-8000-000000000001",
+  "project_id": "0190a8b0-7000-7a00-8000-000000000100",
+  "created_at": "2026-01-01T12:00:00.000Z",
+  "capture_completeness": "sealed_complete",
+  "execution_outcome": "failed",
+  "adapter": "google-adk",
+  "adapter_version": "1.2.3",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "source": "capture",
+  "labels": { "env": "ci", "agent": "inventory" }
+}
