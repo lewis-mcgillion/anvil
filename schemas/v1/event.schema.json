@@ -2,123 +2,301 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://anvil.dev/schemas/v1/event.json",
   "title": "Anvil event (schema version 1)",
-  "description": "One immutable captured event. Events carry a per-stream sequence and causal parents; sequences are per stream, not a global order. Serialized size MUST NOT exceed 256 KiB (enforced by ingest, not by this schema).",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "schema_version",
-    "event_id",
-    "run_id",
-    "stream_id",
-    "sequence",
-    "type",
-    "occurred_at",
-    "trace_id",
-    "span_id",
-    "parent_event_ids",
-    "invocation_id",
-    "payload"
+  "description": "One immutable captured event. Events carry a per-stream sequence and causal parents; sequences are per stream, not a global order. Serialized size MUST NOT exceed 256 KiB (enforced by ingest, not by this schema). The payload shape is discriminated by the event type.",
+  "oneOf": [
+    { "$ref": "#/$defs/runStartedEvent" },
+    { "$ref": "#/$defs/runCompletedEvent" },
+    { "$ref": "#/$defs/runFailedEvent" },
+    { "$ref": "#/$defs/messageCreatedEvent" },
+    { "$ref": "#/$defs/modelRequestedEvent" },
+    { "$ref": "#/$defs/modelChunkEvent" },
+    { "$ref": "#/$defs/modelCompletedEvent" },
+    { "$ref": "#/$defs/modelFailedEvent" },
+    { "$ref": "#/$defs/toolRequestedEvent" },
+    { "$ref": "#/$defs/toolCompletedEvent" },
+    { "$ref": "#/$defs/toolFailedEvent" },
+    { "$ref": "#/$defs/stateCheckpointEvent" },
+    { "$ref": "#/$defs/captureGapEvent" },
+    { "$ref": "#/$defs/faultAppliedEvent" }
   ],
-  "properties": {
-    "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
-    "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
-    "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
-    "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+  "$defs": {
+    "runStartedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "run.started" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/runStartedPayload" }
+      }
+    },
+    "runCompletedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "run.completed" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/runCompletedPayload" }
+      }
+    },
+    "runFailedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "run.failed" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/runFailedPayload" }
+      }
+    },
+    "messageCreatedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "message.created" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/messageCreatedPayload" }
+      }
+    },
+    "modelRequestedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "model.requested" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/modelRequestedPayload" }
+      }
+    },
+    "modelChunkEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "model.chunk" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/modelChunkPayload" }
+      }
+    },
+    "modelCompletedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "model.completed" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/modelCompletedPayload" }
+      }
+    },
+    "modelFailedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "model.failed" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/modelFailedPayload" }
+      }
+    },
+    "toolRequestedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "tool.requested" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/toolRequestedPayload" }
+      }
+    },
+    "toolCompletedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "tool.completed" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/toolCompletedPayload" }
+      }
+    },
+    "toolFailedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "tool.failed" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/toolFailedPayload" }
+      }
+    },
+    "stateCheckpointEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "state.checkpoint" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/stateCheckpointPayload" }
+      }
+    },
+    "captureGapEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "capture.gap" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/captureGapPayload" }
+      }
+    },
+    "faultAppliedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "event_id", "run_id", "stream_id", "sequence", "type", "occurred_at", "trace_id", "span_id", "parent_event_ids", "invocation_id", "payload"],
+      "properties": {
+        "schema_version": { "$ref": "defs.json#/$defs/schemaVersion" },
+        "event_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "run_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "stream_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "sequence": { "$ref": "#/$defs/sequence" },
+        "type": { "const": "fault.applied" },
+        "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
+        "trace_id": { "$ref": "defs.json#/$defs/traceId" },
+        "span_id": { "$ref": "defs.json#/$defs/spanId" },
+        "parent_event_ids": { "$ref": "#/$defs/parentEventIds" },
+        "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
+        "payload": { "$ref": "#/$defs/faultAppliedPayload" }
+      }
+    },
     "sequence": {
       "description": "Per-stream sequence number, starting at 0.",
       "type": "integer",
       "minimum": 0
     },
-    "type": { "$ref": "defs.json#/$defs/eventType" },
-    "occurred_at": { "$ref": "defs.json#/$defs/timestamp" },
-    "trace_id": { "$ref": "defs.json#/$defs/traceId" },
-    "span_id": { "$ref": "defs.json#/$defs/spanId" },
-    "parent_event_ids": {
+    "parentEventIds": {
       "description": "Causal parent event IDs. Parents may arrive later; sealing validates them.",
       "type": "array",
       "items": { "$ref": "defs.json#/$defs/uuidv7" },
       "uniqueItems": true
     },
-    "invocation_id": { "$ref": "defs.json#/$defs/uuidv7" },
-    "payload": {
-      "description": "Type-specific payload, discriminated by the event type.",
-      "oneOf": [
-        { "$ref": "#/$defs/runStartedPayload" },
-        { "$ref": "#/$defs/runCompletedPayload" },
-        { "$ref": "#/$defs/runFailedPayload" },
-        { "$ref": "#/$defs/messageCreatedPayload" },
-        { "$ref": "#/$defs/modelRequestedPayload" },
-        { "$ref": "#/$defs/modelChunkPayload" },
-        { "$ref": "#/$defs/modelCompletedPayload" },
-        { "$ref": "#/$defs/modelFailedPayload" },
-        { "$ref": "#/$defs/toolRequestedPayload" },
-        { "$ref": "#/$defs/toolCompletedPayload" },
-        { "$ref": "#/$defs/toolFailedPayload" },
-        { "$ref": "#/$defs/stateCheckpointPayload" },
-        { "$ref": "#/$defs/captureGapPayload" },
-        { "$ref": "#/$defs/faultAppliedPayload" }
-      ]
-    }
-  },
-  "allOf": [
-    {
-      "if": { "properties": { "type": { "const": "run.started" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/runStartedPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "run.completed" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/runCompletedPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "run.failed" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/runFailedPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "message.created" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/messageCreatedPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "model.requested" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/modelRequestedPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "model.chunk" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/modelChunkPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "model.completed" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/modelCompletedPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "model.failed" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/modelFailedPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "tool.requested" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/toolRequestedPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "tool.completed" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/toolCompletedPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "tool.failed" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/toolFailedPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "state.checkpoint" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/stateCheckpointPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "capture.gap" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/captureGapPayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "fault.applied" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/faultAppliedPayload" } } }
-    }
-  ],
-  "$defs": {
     "redactions": {
       "description": "JSON Pointers of fields redacted before capture. Redaction may remove replay-critical evidence.",
       "type": "array",

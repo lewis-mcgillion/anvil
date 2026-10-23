@@ -62,18 +62,24 @@
       "items": { "$ref": "capture-gap.json" }
     },
     "source": {
-      "description": "Provenance: a direct capture, or a candidate produced by re-execution.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["kind"],
-      "properties": {
-        "kind": { "type": "string", "enum": ["capture", "reexecution"] },
-        "reexecution": { "$ref": "#/$defs/reexecutionProvenance" }
-      },
-      "allOf": [
+      "description": "Provenance: a direct capture, or a candidate produced by re-execution. Re-execution provenance (image digest, adapter, fixtures, model mode, fault plan, budgets) is mandatory for re-execution candidates.",
+      "oneOf": [
         {
-          "if": { "properties": { "kind": { "const": "reexecution" } } },
-          "then": { "required": ["reexecution"] }
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "capture" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "reexecution"],
+          "properties": {
+            "kind": { "const": "reexecution" },
+            "reexecution": { "$ref": "#/$defs/reexecutionProvenance" }
+          }
         }
       ]
     },

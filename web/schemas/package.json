@@ -1,0 +1,23 @@
+{
+  "name": "@anvil/schemas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Validators for Anvil's frozen v1 event and recording JSON Schemas",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "typescript": "5.7.3",
+    "vitest": "3.0.5"
+  }
+}
