@@ -94,6 +94,30 @@ async def test_metrics_require_read_scope_and_hide_other_projects(engine):
             "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401
 
 
+@pytest.mark.asyncio
+async def test_archive_export_rows_cannot_cross_project(engine):
+    run_id, stream_id = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, run_id, stream_id, [Event(
+        schema_version="1", event_id=new_uuid7(), run_id=run_id,
+        stream_id=stream_id, sequence=0, type="run.completed",
+        occurred_at=datetime.now(timezone.utc), payload={}, replay_safe=True)])
+    recording = await seal_run(engine, PROJECT, run_id)
+    recording_id = UUID(recording["recording_id"])
+    job_id = new_uuid7()
+    await JobQueue(engine, timedelta(seconds=30)).create(PROJECT, job_id, "export")
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("""
+            INSERT INTO archive_exports(job_id, project_id, recording_id)
+            VALUES (:job, :project, :recording)
+        """), {"job": job_id, "project": PROJECT, "recording": recording_id})
+    wrong_project = UUID("0199b167-0000-7000-8000-000000000012")
+    async with project_connection(engine, wrong_project) as connection:
+        await connection.execute(text("SET LOCAL ROLE anvil_test_app"))
+        assert (await connection.execute(text("""
+            SELECT count(*) FROM archive_exports WHERE job_id = :job
+        """), {"job": job_id})).scalar_one() == 0
+
+
 PROJECT = UUID("0199b167-0000-7000-8000-000000000011")
 RUN = UUID("0199b167-0000-7000-8000-000000000021")
 STREAM = UUID("0199b167-0000-7000-8000-000000000031")
