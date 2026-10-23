@@ -7,9 +7,9 @@ import (
 	"fmt"
 )
 
-// DB is implemented by *sql.DB and *sql.Tx. Keeping the repository dependent
-// on this small interface makes it possible to exercise its authorization
-// predicates without a database-specific mock.
+// DB is implemented by *sql.DB. Keeping the repository dependent on this
+// small interface makes it possible to exercise its authorization predicates
+// without a database-specific mock.
 type DB interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)

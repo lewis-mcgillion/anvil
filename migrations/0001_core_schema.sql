@@ -97,10 +97,10 @@ BEGIN
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', table_name);
         EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', table_name);
         EXECUTE format(
-            'CREATE POLICY %I_project_isolation ON %I
+            'CREATE POLICY %I ON %I
              USING (project_id = NULLIF(current_setting(''anvil.project_id'', true), '''')::uuid)
              WITH CHECK (project_id = NULLIF(current_setting(''anvil.project_id'', true), '''')::uuid)',
-            table_name, table_name
+            table_name || '_project_isolation', table_name
         );
     END LOOP;
 END $$;
