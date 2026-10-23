@@ -1,0 +1,22 @@
+{
+  "name": "@anvil/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "format": "prettier --check \"src/**/*.ts\"",
+    "lint": "eslint src",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "eslint": "9.39.5",
+    "prettier": "3.4.2",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.18.0"
+  }
+}
