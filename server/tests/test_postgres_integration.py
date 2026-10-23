@@ -412,6 +412,9 @@ async def test_multi_stream_pagination_and_seal_guard(engine):
         assert (await client.get(f"/v1/runs/{run_id}/events", headers=headers)).status_code == 400
         assert (await client.get(f"/v1/runs/{run_id}/events", params={"project_id":
             "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401
+        unknown_run = new_uuid7()
+        assert (await client.get(f"/v1/runs/{unknown_run}/events",
+                                 params={"project_id": str(PROJECT)}, headers=headers)).status_code == 404
         cursor = first.json()["next_cursor"]
         assert cursor
         second = await client.get(url, params={"limit": 1, "cursor": cursor}, headers=headers)

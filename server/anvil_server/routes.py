@@ -588,6 +588,11 @@ async def list_events(request: Request, project_id: UUID, run_id: UUID, limit: i
     except (ValueError, TypeError):
         return failure(request, 400, "invalid_cursor")
     async with project_connection(engine, project_id) as connection:
+        run_exists = (await connection.execute(text("""
+            SELECT 1 FROM runs WHERE project_id = :project AND id = :run
+        """), {"project": project_id, "run": run_id})).scalar_one_or_none()
+        if run_exists is None:
+            return failure(request, 404, "not_found")
         rows = (await connection.execute(text("""
             SELECT event_id, run_id, stream_id, sequence, schema_version, event_type,
                    occurred_at, trace_id, span_id, parent_event_ids, invocation_id, payload, replay_safe
