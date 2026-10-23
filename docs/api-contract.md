@@ -78,6 +78,12 @@ cannot exfiltrate recordings or trigger execution.
 - `409` means a real conflict (payload mismatch, conflicting event, state
   transition). Do not retry unchanged.
 
+Idempotency records and job handles are project-scoped. A valid identifier
+from another project is reported as `not_found`, rather than confirming that
+the resource exists. Export and import workers must discard partial archive
+output on cancellation or failure; only a terminal successful job may expose
+its result.
+
 ## Idempotency
 
 Creating resources requires an `Idempotency-Key` header (8–128 chars,

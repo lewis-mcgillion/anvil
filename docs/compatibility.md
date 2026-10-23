@@ -66,6 +66,13 @@ proto change, plus an entry in this file.
 5. Contract changes ship with fixtures or conformance coverage (ANVIL-006)
    before dependent features land.
 
+Administration data is introduced by numbered migrations. `0002_administration`
+adds project-scoped jobs, idempotency responses, deletion requests and audit
+evidence; it also adds the bounded project retention setting. The migration is
+transactional and must be applied after `0001_core`. Job cancellation is
+terminally observable (`cancelling` then `cancelled`), while a failed or
+cancelled job must release its lease and discard partial export/import output.
+
 ## Sunset and migration
 
 When a `/v2` line is introduced, `/v1` remains available for at least one
