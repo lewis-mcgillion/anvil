@@ -58,6 +58,19 @@ Events are idempotent by event identity plus content hash; conflicting identitie
 
 Defaults: max event 256 KiB, ingest batch 4 MiB or 500 events, artifact 8 MiB, run 64 MiB, SDK buffer 2000 events or 16 MiB, 30-day retention, list page 100 (max 1000). Failed capture must report gaps, never silently succeed. Artifacts and recordings carry SHA-256 hashes. No pickle or arbitrary object deserialization is accepted from recordings.
 
+### Portable recording bundles
+
+The version-1 `.anvil` format is a ZIP archive containing `manifest.json` and one
+`artifacts/<sha256>` entry per manifest artifact. The manifest records
+`schema_version`, a non-empty `recording_id`, and each artifact's name, media
+type, byte size, and SHA-256 digest. Export rejects mismatched metadata. Import
+treats the archive as untrusted: absolute paths, `..` traversal, duplicate or
+unexpected entries, unsupported schema versions, payloads over 8 MiB per
+artifact or 64 MiB per bundle, and digest mismatches fail explicitly. Import
+does not extract to disk and closes each ZIP entry after bounded reading.
+Cancellation is owned by the caller through the `io.Reader`/`io.Writer`;
+partial output must be discarded rather than treated as a valid bundle.
+
 ## Public API
 
 Base `/v1`, JSON over HTTPS except loopback HTTP. Use OpenAPI as source of truth; strict request decoding, stable opaque cursors, scope-bound API keys, idempotency keys on creations, `application/problem+json` errors, `Retry-After` on throttling and `202` for asynchronous jobs.

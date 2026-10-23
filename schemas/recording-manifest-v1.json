@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anvil.dev/schemas/recording-manifest-v1.json",
+  "title": "Anvil portable recording manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "recording_id", "artifacts"],
+  "properties": {
+    "schema_version": {
+      "const": "1"
+    },
+    "recording_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 1023,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "sha256", "size"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "media_type": {"type": "string"},
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 8388608
+          }
+        }
+      }
+    }
+  }
+}
