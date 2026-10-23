@@ -500,6 +500,13 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         runs = await client.get("/v1/runs", params={"project_id": str(PROJECT), "limit": 1}, headers=headers)
         assert runs.status_code == 200, runs.text
+        projects = await client.get("/v1/projects", params={"project_id": str(PROJECT)}, headers=headers)
+        assert projects.status_code == 200, projects.text
+        assert len(projects.json()["items"]) == 1
+        assert projects.json()["items"][0]["id"] == str(PROJECT)
+        assert (await client.get("/v1/projects", headers=headers)).status_code == 400
+        assert (await client.get("/v1/projects", params={"project_id":
+            "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401
         assert all(item["project_id"] == str(PROJECT) for item in runs.json()["items"])
         assert (await client.get("/v1/runs", params={"project_id": str(
             UUID("0199b167-0000-7000-8000-000000000012"))}, headers=headers)).status_code == 401

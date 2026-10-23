@@ -29,6 +29,27 @@ from .security import AccessDenied, Unauthenticated, authorize
 router = APIRouter(prefix="/v1")
 
 
+@router.get("/projects")
+async def list_projects(request: Request, project_id: UUID | None = None,
+                        limit: int = 100, cursor: str | None = None):
+    if project_id is None or limit < 1 or limit > 1000:
+        return failure(request, 400, "invalid_request")
+    engine, error = await scoped(request, project_id, "runs:read")
+    if error is not None:
+        return error
+    if cursor is not None:
+        return failure(request, 400, "invalid_cursor")
+    async with project_connection(engine, project_id) as connection:
+        row = (await connection.execute(text("""
+            SELECT id, name, retention_days, created_at FROM projects WHERE id = :project
+        """), {"project": project_id})).mappings().first()
+    if row is None:
+        return failure(request, 404, "not_found")
+    return {"items": [{"id": str(row["id"]), "name": row["name"],
+                       "retention_days": row["retention_days"],
+                       "created_at": row["created_at"].isoformat()}], "next_cursor": None}
+
+
 @router.get("/runs")
 async def list_runs(request: Request, project_id: UUID | None = None, limit: int = 100,
                     cursor: str | None = None, execution_state: str | None = None,
