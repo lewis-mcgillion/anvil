@@ -21,6 +21,14 @@ def test_chunked_request_body_limit():
     asyncio.run(check())
 
 
+def test_declared_oversized_body_rejected_before_handler():
+    response = client.post("/v1/projects", content=b"{}",
+                           headers={"Content-Length": str(5 * 1024 * 1024)})
+    assert response.status_code == 413
+    assert response.json()["status"] == 413
+    assert response.json()["request_id"] == response.headers["X-Request-ID"]
+
+
 client = TestClient(app)
 
 
