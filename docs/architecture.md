@@ -56,6 +56,14 @@ Event types: `run.started`, `run.completed`, `run.failed`, `message.created`, `m
 
 Events are idempotent by event identity plus content hash; conflicting identities/sequences return HTTP 409 without partial insertion. Sequences are per stream, not a fictitious total global order. Causal parents may arrive later; sealing validates them. Capture completeness (`open`, `sealing`, `sealed_complete`, `sealed_incomplete`) differs from execution outcome (`running`, `succeeded`, `failed`, `cancelled`, `unknown`).
 
+The initial PostgreSQL migration is `migrations/0001_core.sql`. It is transactional and records
+its applied version in `schema_migrations`; upgrade tooling must apply numbered migrations in order
+and must not edit an applied migration. Event identity and `(stream_id, sequence)` are unique
+constraints, so a conflicting retry must be translated to `409 Conflict` and its transaction rolled
+back without partial insertion. Events and finalized recordings are immutable; attempted updates or
+deletes fail explicitly. A failed migration is rolled back by PostgreSQL and releases its transaction
+resources; callers must close their database session or return it to the pool.
+
 Defaults: max event 256 KiB, ingest batch 4 MiB or 500 events, artifact 8 MiB, run 64 MiB, SDK buffer 2000 events or 16 MiB, 30-day retention, list page 100 (max 1000). Failed capture must report gaps, never silently succeed. Artifacts and recordings carry SHA-256 hashes. No pickle or arbitrary object deserialization is accepted from recordings.
 
 ## Public API
