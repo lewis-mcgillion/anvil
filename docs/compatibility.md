@@ -32,6 +32,9 @@ builds, field-tag goldens) enforce the mechanical parts.
   (proto3 unknown-field rules; JSON clients must not fail on extras).
 - New error `code` values. Clients must treat unknown codes as generic
   failures of the HTTP status.
+- New optional job outcome values and fields. Clients must treat
+  `interrupted` as non-successful work and continue to handle unknown
+  outcome values as an unspecified failure.
 
 Consumers of enum-valued fields must handle unknown values as
 `UNSPECIFIED`/unknown and fail closed, since a newer server may emit newer
@@ -73,6 +76,10 @@ prevents capture keys from being combined with read or replay access.
 4. Update `docs/api-contract.md` and this document in the same change.
 5. Contract changes ship with fixtures or conformance coverage (ANVIL-006)
    before dependent features land.
+
+The PostgreSQL job lease store is introduced by the additive
+`migrations/0002_jobs.sql` migration. It records attempts and interrupted
+worker outcomes without rewriting existing event or recording data.
 
 ## Sunset and migration
 
