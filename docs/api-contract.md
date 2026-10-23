@@ -78,6 +78,24 @@ cannot exfiltrate recordings or trigger execution.
 - `409` means a real conflict (payload mismatch, conflicting event, state
   transition). Do not retry unchanged.
 
+## Pagination and event notifications
+
+List endpoints use keyset pagination. A cursor is opaque, versioned and
+authenticated by the server; it contains the resource scope, ordering key and
+all filters used to create it. Clients must pass a cursor only to the same
+resource query. A malformed, expired or filter-mismatched cursor returns
+`400 invalid_request`. Results are ordered by a deterministic key and the
+server fetches one extra row to decide whether `next_cursor` is present, so
+inserts do not cause an item to appear on two adjacent pages.
+
+`GET /runs/{run_id}/watch` returns `text/event-stream`. Each frame uses the
+immutable capture `event_id` as its SSE `id`; clients reconnect with
+`Last-Event-ID` to receive events strictly after that identity. The server
+retains a bounded replay window. If the requested identity is outside that
+window it closes the request with an explicit resume error rather than
+silently dropping events. Disconnects and request cancellation remove the
+subscriber and release its resources.
+
 ## Idempotency
 
 Creating resources requires an `Idempotency-Key` header (8–128 chars,
@@ -106,6 +124,10 @@ Cancel with `POST /jobs/{id}:cancel`:
   reclaims resources — container, Unix socket, fixture mounts, job lease —
   on cancellation, failure or timeout. Cleanup is the supervisor's duty,
   never the caller's.
+- A worker owns a lease with a unique token and must heartbeat before the
+  lease expires. Expired leases are recovered with `outcome: interrupted`;
+  work is retried up to its attempt limit, then fails explicitly. A stale
+  worker cannot heartbeat or complete a reassigned job.
 
 The runner protocol applies the same rules: `Cancel` stops the runner,
 which must reply `RunnerFinished(CANCELLED)`; the supervisor then closes

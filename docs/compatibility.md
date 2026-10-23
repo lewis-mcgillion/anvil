@@ -22,6 +22,8 @@ builds, field-tag goldens) enforce the mechanical parts.
 - Events: `schema_version` per event (`"1"`). Projection: pinned
   `projection_version` query parameter.
 - Suites: `apiVersion`/`kind` in the document.
+- Pagination cursors: signed version `1` envelopes. Cursor contents are
+  opaque and may change only in a backward-compatible way within `/v1`.
 
 ## Compatible (additive) changes — allowed within a major version
 
@@ -32,6 +34,9 @@ builds, field-tag goldens) enforce the mechanical parts.
   (proto3 unknown-field rules; JSON clients must not fail on extras).
 - New error `code` values. Clients must treat unknown codes as generic
   failures of the HTTP status.
+- New optional job outcome values and fields. Clients must treat
+  `interrupted` as non-successful work and continue to handle unknown
+  outcome values as an unspecified failure.
 
 Consumers of enum-valued fields must handle unknown values as
 `UNSPECIFIED`/unknown and fail closed, since a newer server may emit newer
@@ -55,6 +60,14 @@ removal fails CI. Additive changes require regenerating the golden with
 `UPDATE_GOLDEN=1 go test ./internal/contracts/...` in the same PR as the
 proto change, plus an entry in this file.
 
+## Authorization storage
+
+Migration `0002_authorization` adds project-scoped API keys. Only a SHA-256
+hash is persisted; the generated bearer secret is returned once. Keys may be
+rotated by creating a replacement with `rotated_from`, and revocation is a
+timestamped state transition. The migration rejects unknown scopes and
+prevents capture keys from being combined with read or replay access.
+
 ## Process for contract changes
 
 1. Update `api/openapi.yaml` and/or `proto/anvil/runner/v1/runner.proto`.
@@ -65,6 +78,10 @@ proto change, plus an entry in this file.
 4. Update `docs/api-contract.md` and this document in the same change.
 5. Contract changes ship with fixtures or conformance coverage (ANVIL-006)
    before dependent features land.
+
+The PostgreSQL job lease store is introduced by the additive
+`migrations/0002_jobs.sql` migration. It records attempts and interrupted
+worker outcomes without rewriting existing event or recording data.
 
 ## Sunset and migration
 

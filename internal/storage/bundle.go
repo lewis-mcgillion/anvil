@@ -47,7 +47,7 @@ func ExportBundle(w io.Writer, manifest Manifest, artifacts []Artifact) error {
 	if manifest.SchemaVersion == "" {
 		manifest.SchemaVersion = ManifestVersion
 	}
-	if manifest.SchemaVersion != ManifestVersion || len(artifacts) != len(manifest.Artifacts) {
+	if manifest.SchemaVersion != ManifestVersion || manifest.RecordingID == "" || len(artifacts) != len(manifest.Artifacts) {
 		return fmt.Errorf("%w: unsupported manifest or artifact count", ErrInvalidBundle)
 	}
 	entries := make(map[string]Artifact, len(artifacts))
@@ -62,16 +62,19 @@ func ExportBundle(w io.Writer, manifest Manifest, artifacts []Artifact) error {
 	}
 	for _, entry := range manifest.Artifacts {
 		artifact, ok := entries[entry.Hash]
-		if !ok || entry.Size != int64(len(artifact.Data)) || entry.Name != artifact.Name {
+		if !ok || !validArtifactName(entry.Name) || entry.Size != int64(len(artifact.Data)) ||
+			entry.Name != artifact.Name || entry.MediaType != artifact.MediaType {
 			return fmt.Errorf("%w: manifest does not match artifact", ErrBundleTampered)
 		}
 	}
 	seenManifest := make(map[string]bool, len(manifest.Artifacts))
+	seenNames := make(map[string]bool, len(manifest.Artifacts))
 	for _, entry := range manifest.Artifacts {
-		if seenManifest[entry.Hash] {
+		if seenManifest[entry.Hash] || seenNames[entry.Name] {
 			return fmt.Errorf("%w: duplicate manifest artifact", ErrInvalidBundle)
 		}
 		seenManifest[entry.Hash] = true
+		seenNames[entry.Name] = true
 	}
 	var buffer bytes.Buffer
 	zw := zip.NewWriter(&buffer)
@@ -139,7 +142,9 @@ func ImportBundle(r io.Reader) (ImportedBundle, error) {
 		return ImportedBundle{}, err
 	}
 	var manifest Manifest
-	if err := json.Unmarshal(manifestBytes, &manifest); err != nil || manifest.SchemaVersion != ManifestVersion || manifest.RecordingID == "" {
+	decoder := json.NewDecoder(bytes.NewReader(manifestBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&manifest); err != nil || manifest.SchemaVersion != ManifestVersion || manifest.RecordingID == "" {
 		return ImportedBundle{}, fmt.Errorf("%w: unsupported manifest", ErrInvalidBundle)
 	}
 	if len(manifest.Artifacts) > MaxBundleFiles-1 {
@@ -147,12 +152,15 @@ func ImportBundle(r io.Reader) (ImportedBundle, error) {
 	}
 	imported := ImportedBundle{Manifest: manifest, Artifacts: make([]Artifact, 0, len(manifest.Artifacts))}
 	seen := make(map[string]bool, len(manifest.Artifacts))
+	seenNames := make(map[string]bool, len(manifest.Artifacts))
 	actualExtracted := int64(len(manifestBytes))
 	for _, entry := range manifest.Artifacts {
-		if seen[entry.Hash] || !validHash(entry.Hash) || entry.Size < 0 || entry.Size > MaxArtifactSize {
+		if seen[entry.Hash] || seenNames[entry.Name] || !validHash(entry.Hash) ||
+			!validArtifactName(entry.Name) || entry.Size < 0 || entry.Size > MaxArtifactSize {
 			return ImportedBundle{}, fmt.Errorf("%w: invalid artifact manifest", ErrInvalidBundle)
 		}
 		seen[entry.Hash] = true
+		seenNames[entry.Name] = true
 		file, ok := files["artifacts/"+entry.Hash]
 		if !ok {
 			return ImportedBundle{}, fmt.Errorf("%w: missing artifact", ErrInvalidBundle)
@@ -197,6 +205,11 @@ func validHash(value string) bool {
 	}
 	_, err := hex.DecodeString(value)
 	return err == nil
+}
+
+func validArtifactName(value string) bool {
+	return value != "" && value != "." && value != ".." &&
+		!strings.ContainsAny(value, "/\\") && !strings.ContainsRune(value, 0)
 }
 
 func safeEntryName(name string) bool {
