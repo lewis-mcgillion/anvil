@@ -110,10 +110,13 @@ class JobQueue:
         async with project_connection(self.engine, project_id) as connection:
             result = await connection.execute(text("""
                 UPDATE jobs
-                SET status = CASE WHEN attempts < max_attempts THEN 'queued' ELSE 'failed' END,
-                    outcome = CASE WHEN attempts < max_attempts THEN 'interrupted' ELSE 'failed' END,
+                SET status = CASE WHEN status = 'cancelling' THEN 'cancelled'
+                                  WHEN attempts < max_attempts THEN 'queued' ELSE 'failed' END,
+                    outcome = CASE WHEN status = 'cancelling' THEN 'cancelled'
+                                   WHEN attempts < max_attempts THEN 'interrupted' ELSE 'failed' END,
                     error = 'worker lease expired',
-                    finished_at = CASE WHEN attempts < max_attempts THEN NULL ELSE clock_timestamp() END,
+                    finished_at = CASE WHEN status <> 'cancelling' AND attempts < max_attempts
+                                       THEN NULL ELSE clock_timestamp() END,
                     lease_token = NULL, lease_expires_at = NULL, heartbeat_at = NULL
                 WHERE project_id = :project AND status IN ('running', 'cancelling')
                   AND lease_expires_at < clock_timestamp()

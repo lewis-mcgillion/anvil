@@ -127,6 +127,42 @@ async def test_kind_specific_job_claim(engine):
 
 
 @pytest.mark.asyncio
+async def test_expired_cancelled_lease_never_requeues(engine):
+    queue = JobQueue(engine, timedelta(seconds=30))
+    job_id, token = new_uuid7(), new_uuid7()
+    await queue.create(PROJECT, job_id, "seal")
+    await queue.acquire_job(PROJECT, job_id, token)
+    assert (await queue.cancel(PROJECT, job_id))["status"] == "cancelling"
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("""
+            UPDATE jobs SET lease_expires_at = clock_timestamp() - interval '1 second'
+            WHERE project_id = :project AND id = :job
+        """), {"project": PROJECT, "job": job_id})
+    assert await queue.recover_expired(PROJECT) >= 1
+    assert (await queue.get(PROJECT, job_id))["status"] == "cancelled"
+    assert await queue.acquire_job(PROJECT, job_id, new_uuid7()) is None
+
+
+@pytest.mark.asyncio
+async def test_exhausted_lease_is_terminal_and_fenced(engine):
+    queue = JobQueue(engine, timedelta(seconds=30))
+    job_id, token = new_uuid7(), new_uuid7()
+    await queue.create(PROJECT, job_id, "seal")
+    await queue.acquire_job(PROJECT, job_id, token)
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("""
+            UPDATE jobs SET max_attempts = 1,
+                lease_expires_at = clock_timestamp() - interval '1 second'
+            WHERE project_id = :project AND id = :job
+        """), {"project": PROJECT, "job": job_id})
+    await queue.recover_expired(PROJECT)
+    assert (await queue.get(PROJECT, job_id))["status"] == "failed"
+    with pytest.raises(LeaseLost):
+        await queue.complete(PROJECT, job_id, token, "succeeded")
+    assert await queue.acquire_job(PROJECT, job_id, new_uuid7()) is None
+
+
+@pytest.mark.asyncio
 async def test_recorded_capture_to_immutable_seal(engine):
     run_id, stream_id = await create_run(engine, PROJECT)
     event = Event(schema_version="1", event_id=new_uuid7(),
