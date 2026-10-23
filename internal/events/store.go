@@ -104,6 +104,17 @@ func (s *Store) AcceptBatch(ctx context.Context, projectID, runID, streamID stri
 		if event.Sequence != next {
 			return BatchResult{}, fmt.Errorf("%w: got %d, want %d", ErrSequence, event.Sequence, next)
 		}
+		var occupiedID string
+		err = tx.QueryRowContext(ctx, `SELECT event_id FROM events
+			WHERE project_id = $1 AND stream_id = $2 AND sequence = $3`,
+			projectID, streamID, event.Sequence).Scan(&occupiedID)
+		switch {
+		case err == nil:
+			return BatchResult{}, fmt.Errorf("%w: sequence %d is already occupied by %s",
+				ErrConflict, event.Sequence, occupiedID)
+		case !errors.Is(err, sql.ErrNoRows):
+			return BatchResult{}, err
+		}
 		parents, _ := json.Marshal(event.ParentEventIDs)
 		_, err = tx.ExecContext(ctx, `INSERT INTO events
 			(event_id, project_id, run_id, stream_id, sequence, schema_version,
