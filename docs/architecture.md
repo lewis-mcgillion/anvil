@@ -56,6 +56,10 @@ Event types: `run.started`, `run.completed`, `run.failed`, `message.created`, `m
 
 Events are idempotent by event identity plus content hash; conflicting identities/sequences return HTTP 409 without partial insertion. Sequences are per stream, not a fictitious total global order. Causal parents may arrive later; sealing validates them. Capture completeness (`open`, `sealing`, `sealed_complete`, `sealed_incomplete`) differs from execution outcome (`running`, `succeeded`, `failed`, `cancelled`, `unknown`).
 
+The storage compatibility rules for the current `schema_version: "1"` event
+rows, size limits, transactional retry behavior and future migrations are
+documented in [storage-compatibility.md](storage-compatibility.md).
+
 Defaults: max event 256 KiB, ingest batch 4 MiB or 500 events, artifact 8 MiB, run 64 MiB, SDK buffer 2000 events or 16 MiB, 30-day retention, list page 100 (max 1000). Failed capture must report gaps, never silently succeed. Artifacts and recordings carry SHA-256 hashes. No pickle or arbitrary object deserialization is accepted from recordings.
 
 ## Public API

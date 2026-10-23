@@ -17,6 +17,7 @@ import (
 const (
 	CurrentSchemaVersion = "1"
 	MaxEventBytes        = 256 * 1024
+	MaxBatchBytes        = 4 * 1024 * 1024
 	MaxBatchEvents       = 500
 )
 
@@ -136,6 +137,7 @@ func ValidateBatch(projectID, runID, streamID string, batch []Event) error {
 		return fmt.Errorf("%w: missing scope or invalid batch size", ErrInvalid)
 	}
 	seen := make(map[string]struct{}, len(batch))
+	batchBytes := 0
 	for _, event := range batch {
 		if event.SchemaVersion != CurrentSchemaVersion || event.EventID == "" ||
 			event.RunID != runID || event.StreamID != streamID || event.Sequence < 0 ||
@@ -143,8 +145,13 @@ func ValidateBatch(projectID, runID, streamID string, batch []Event) error {
 			!json.Valid(event.Payload) {
 			return fmt.Errorf("%w: malformed event %s", ErrInvalid, event.EventID)
 		}
-		if len(eventBytes(event)) > MaxEventBytes {
+		eventSize := len(eventBytes(event))
+		if eventSize > MaxEventBytes {
 			return fmt.Errorf("%w: event %s exceeds %d bytes", ErrInvalid, event.EventID, MaxEventBytes)
+		}
+		batchBytes += eventSize
+		if batchBytes > MaxBatchBytes {
+			return fmt.Errorf("%w: batch exceeds %d bytes", ErrInvalid, MaxBatchBytes)
 		}
 		if _, ok := seen[event.EventID]; ok {
 			return fmt.Errorf("%w: duplicate event identity in batch", ErrConflict)

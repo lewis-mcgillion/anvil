@@ -45,3 +45,10 @@ func TestContentHashCanonicalizesObjectKeyOrder(t *testing.T) {
 		t.Fatalf("hashes differ: %s != %s", a, b)
 	}
 }
+
+func TestValidateBatchRejectsOversizedBatch(t *testing.T) {
+	event := testEvent(0, `{"value":"`+string(make([]byte, MaxEventBytes))+`"}`)
+	if err := ValidateBatch("project", "run", "stream", []Event{event}); err == nil {
+		t.Fatal("ValidateBatch() accepted an oversized event")
+	}
+}
