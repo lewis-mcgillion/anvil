@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -27,5 +28,39 @@ func TestEnvOr(t *testing.T) {
 	}
 	if got := envOr("ANVIL_MISSING_VALUE", "fallback"); got != "fallback" {
 		t.Fatalf("envOr() = %q, want fallback", got)
+	}
+}
+
+func TestCaptureEndpointsRequireAuthorizationAndReturnJobs(t *testing.T) {
+	server := newServer("127.0.0.1:0")
+	body := bytes.NewBufferString(`{"agent_name":"agent","adapter":"adk","adapter_version":"1"}`)
+	request := httptest.NewRequest(http.MethodPost, "/v1/projects/project-1/runs", body)
+	response := httptest.NewRecorder()
+	server.Handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+
+	body = bytes.NewBufferString(`{"agent_name":"agent","adapter":"adk","adapter_version":"1"}`)
+	request = httptest.NewRequest(http.MethodPost, "/v1/projects/project-1/runs", body)
+	request.Header.Set("Authorization", "Bearer "+"capture"+":write")
+	request.Header.Set("Idempotency-Key", "create-1")
+	response = httptest.NewRecorder()
+	server.Handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCaptureEndpointRejectsUnknownFields(t *testing.T) {
+	server := newServer("127.0.0.1:0")
+	request := httptest.NewRequest(http.MethodPost, "/v1/projects/project-1/runs",
+		bytes.NewBufferString(`{"agent_name":"agent","adapter":"adk","adapter_version":"1","extra":true}`))
+	request.Header.Set("Authorization", "Bearer "+"capture"+":write")
+	request.Header.Set("Idempotency-Key", "create-1")
+	response := httptest.NewRecorder()
+	server.Handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid request status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
 }
