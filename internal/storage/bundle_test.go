@@ -82,30 +82,6 @@ func TestImportRejectsUnexpectedEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	func TestBundleRejectsInvalidManifestMetadata(t *testing.T) {
-		artifact := Artifact{Hash: "not-a-digest", Name: "trace.json", MediaType: "application/json", Size: 1, Data: []byte("x")}
-		manifest := Manifest{
-			SchemaVersion: ManifestVersion,
-			RecordingID:   "recording-1",
-			Artifacts: []ManifestEntry{{Name: artifact.Name, MediaType: "text/plain", Hash: artifact.Hash, Size: artifact.Size}},
-		}
-		var archive bytes.Buffer
-		if err := ExportBundle(&archive, manifest, []Artifact{artifact}); !errors.Is(err, ErrBundleTampered) {
-			t.Fatalf("expected metadata rejection, got %v", err)
-		}
-	}
-
-	func TestImportRejectsUnknownManifestFields(t *testing.T) {
-		manifest := []byte(`{"schema_version":"1","recording_id":"recording-1","artifacts":[],"unexpected":true}`)
-		var archive bytes.Buffer
-		writer := zip.NewWriter(&archive)
-		entry, _ := writer.Create("manifest.json")
-		_, _ = entry.Write(manifest)
-		_ = writer.Close()
-		if _, err := ImportBundle(&archive); !errors.Is(err, ErrInvalidBundle) {
-			t.Fatalf("expected unknown manifest field rejection, got %v", err)
-		}
-	}
 	manifest := Manifest{SchemaVersion: ManifestVersion, RecordingID: "recording-1", Artifacts: []ManifestEntry{{Name: artifact.Name, Hash: artifact.Hash, Size: artifact.Size}}}
 	var archive bytes.Buffer
 	writer := zip.NewWriter(&archive)
@@ -116,6 +92,31 @@ func TestImportRejectsUnexpectedEntry(t *testing.T) {
 	_ = writer.Close()
 	if _, err := ImportBundle(&archive); !errors.Is(err, ErrInvalidBundle) {
 		t.Fatalf("expected unexpected-entry rejection, got %v", err)
+	}
+}
+
+func TestBundleRejectsInvalidManifestMetadata(t *testing.T) {
+	artifact := Artifact{Hash: "not-a-digest", Name: "trace.json", MediaType: "application/json", Size: 1, Data: []byte("x")}
+	manifest := Manifest{
+		SchemaVersion: ManifestVersion,
+		RecordingID:   "recording-1",
+		Artifacts:     []ManifestEntry{{Name: artifact.Name, MediaType: "text/plain", Hash: artifact.Hash, Size: artifact.Size}},
+	}
+	var archive bytes.Buffer
+	if err := ExportBundle(&archive, manifest, []Artifact{artifact}); !errors.Is(err, ErrBundleTampered) {
+		t.Fatalf("expected metadata rejection, got %v", err)
+	}
+}
+
+func TestImportRejectsUnknownManifestFields(t *testing.T) {
+	manifest := []byte(`{"schema_version":"1","recording_id":"recording-1","artifacts":[],"unexpected":true}`)
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	entry, _ := writer.Create("manifest.json")
+	_, _ = entry.Write(manifest)
+	_ = writer.Close()
+	if _, err := ImportBundle(&archive); !errors.Is(err, ErrInvalidBundle) {
+		t.Fatalf("expected unknown manifest field rejection, got %v", err)
 	}
 }
 

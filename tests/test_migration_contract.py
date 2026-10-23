@@ -64,7 +64,7 @@ class AdministrationMigrationContractTests(unittest.TestCase):
         for table in ("jobs", "idempotency_keys", "deletion_requests", "audit_events"):
             self.assertIn(f"CREATE TABLE {table}", self.sql)
             self.assertIn(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY", self.sql)
-        self.assertIn("UNIQUE (project_id, key)", self.sql)
+        self.assertIn("PRIMARY KEY (project_id, key)", self.sql)
         self.assertIn("UNIQUE (project_id, target_kind, target_id)", self.sql)
 
     def test_job_states_and_retention_are_bounded(self):

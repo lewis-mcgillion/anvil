@@ -15,18 +15,18 @@ import (
 )
 
 var (
-	ErrInvalid   = errors.New("invalid job request")
-	ErrConflict  = errors.New("idempotency key conflict")
-	ErrNotFound  = errors.New("job not found")
-	ErrFinished  = errors.New("job has already finished")
+	ErrInvalid  = errors.New("invalid job request")
+	ErrConflict = errors.New("idempotency key conflict")
+	ErrNotFound = errors.New("job not found")
+	ErrFinished = errors.New("job has already finished")
 )
 
 type Kind string
 
 const (
-	Export    Kind = "export"
-	Import    Kind = "import"
-	Deletion  Kind = "deletion"
+	Export   Kind = "export"
+	Import   Kind = "import"
+	Deletion Kind = "deletion"
 )
 
 type Status string
@@ -52,11 +52,11 @@ type Job struct {
 }
 
 type Manager struct {
-	mu      sync.RWMutex
-	nextID  uint64
-	now     func() time.Time
-	jobs    map[string]Job
-	keys    map[string]idempotency
+	mu     sync.RWMutex
+	nextID uint64
+	now    func() time.Time
+	jobs   map[string]Job
+	keys   map[string]idempotency
 }
 
 type idempotency struct {
