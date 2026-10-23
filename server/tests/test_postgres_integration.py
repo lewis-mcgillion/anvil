@@ -548,6 +548,21 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
         short_recording = await client.get(short_url, params={"project_id": str(PROJECT)}, headers=headers)
         assert short_recording.status_code == 200
         assert short_recording.json() == recording.json()
+        export_key = str(new_uuid7())
+        export_headers = {**headers, "Idempotency-Key": export_key}
+        export_url = f"{short_url}/exports"
+        queued_export = await client.post(export_url, params={"project_id": str(PROJECT)},
+                                          json={"include_artifacts": True}, headers=export_headers)
+        assert queued_export.status_code == 202, queued_export.text
+        repeated_export = await client.post(export_url, params={"project_id": str(PROJECT)},
+                                            json={"include_artifacts": True}, headers=export_headers)
+        assert repeated_export.status_code == 202
+        assert repeated_export.json()["job_id"] == queued_export.json()["job_id"]
+        assert (await client.post(export_url, params={"project_id": str(PROJECT)},
+                                  json={"include_artifacts": False}, headers=export_headers)).status_code == 409
+        assert (await client.post(export_url, params={"project_id": str(PROJECT)},
+                                  json={"redaction_profile": "unknown"},
+                                  headers={**headers, "Idempotency-Key": str(new_uuid7())})).status_code == 400
         assert (await client.get(short_url, headers=headers)).status_code == 400
         assert (await client.get(short_url, params={"project_id":
             "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401

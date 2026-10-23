@@ -119,6 +119,12 @@ class ArchiveImport(BaseModel):
     archive_base64: str
 
 
+class ExportCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    include_artifacts: bool = True
+    redaction_profile: str | None = Field(default=None, min_length=1, max_length=128)
+
+
 class DeletionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     target_kind: str = Field(pattern=r"^(run|recording|suite)$")
@@ -503,6 +509,61 @@ async def project_recording_by_id(request: Request, recording_id: UUID,
         return failure(request, 400, "invalid_request")
     return await project_recording(request, project_id, recording_id,
                                    projection_version, before_event_id)
+
+
+@router.post("/recordings/{recording_id}/exports", status_code=202)
+async def request_recording_export(request: Request, recording_id: UUID,
+                                   payload: ExportCreate | None = None,
+                                   project_id: UUID | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    engine, error = await scoped(request, project_id, "runs:read")
+    if error is not None:
+        return error
+    options = payload or ExportCreate()
+    if options.redaction_profile is not None:
+        return failure(request, 400, "invalid_request")
+    key = request.headers.get("Idempotency-Key")
+    if key is None or re.fullmatch(r"[A-Za-z0-9_-]{8,128}", key) is None:
+        return failure(request, 400, "invalid_request")
+    digest = hashlib.sha256(json.dumps({"recording": str(recording_id),
+                                       "include_artifacts": options.include_artifacts},
+                                      sort_keys=True).encode()).hexdigest()
+    job_id = new_uuid7()
+    async with project_connection(engine, project_id) as connection:
+        await connection.execute(text("""
+            SELECT pg_advisory_xact_lock(hashtextextended(:lock, 0))
+        """), {"lock": str(project_id) + ":" + key})
+        previous = (await connection.execute(text("""
+            SELECT request_hash, response FROM idempotency_keys
+            WHERE project_id = :project AND key = :key
+        """), {"project": project_id, "key": key})).mappings().first()
+        if previous:
+            if previous["request_hash"] != digest:
+                return failure(request, 409, "conflict")
+            job_id = UUID(previous["response"]["job_id"])
+        else:
+            found = (await connection.execute(text("""
+                SELECT 1 FROM recordings WHERE project_id = :project AND id = :recording
+            """), {"project": project_id, "recording": recording_id})).scalar_one_or_none()
+            if found is None:
+                return failure(request, 404, "not_found")
+            await connection.execute(text("""
+                INSERT INTO jobs(id, project_id, kind) VALUES (:job, :project, 'export')
+            """), {"job": job_id, "project": project_id})
+            await connection.execute(text("""
+                INSERT INTO archive_exports(job_id, project_id, recording_id, include_artifacts)
+                VALUES (:job, :project, :recording, :include)
+            """), {"job": job_id, "project": project_id, "recording": recording_id,
+                   "include": options.include_artifacts})
+            await connection.execute(text("""
+                INSERT INTO idempotency_keys(project_id, key, request_hash, status_code, response)
+                VALUES (:project, :key, :hash, 202, CAST(:response AS jsonb))
+            """), {"project": project_id, "key": key, "hash": digest,
+                   "response": json.dumps({"job_id": str(job_id)})})
+    job_url = f"/v1/projects/{project_id}/jobs/{job_id}"
+    return Response(content=json.dumps({"job_id": str(job_id), "job_url": job_url, "status": "queued"}),
+                    media_type="application/json", status_code=202, headers={"Location": job_url})
 
 
 @router.get("/projects/{project_id}/recordings/{recording_id}/archive")

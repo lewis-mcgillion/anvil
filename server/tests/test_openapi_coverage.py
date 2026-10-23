@@ -7,7 +7,7 @@ import yaml
 from anvil_server.app import app
 
 KNOWN_MISSING = {
-    "POST /recordings/{recording_id}/exports", "POST /projects/{project_id}/imports",
+    "POST /projects/{project_id}/imports",
     "POST /reexecutions",
     "GET /reexecutions/{reexecution_id}", "POST /comparisons",
     "GET /comparisons/{comparison_id}", "GET /comparisons/{comparison_id}/divergences",
