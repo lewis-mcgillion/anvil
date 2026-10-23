@@ -1,11 +1,7 @@
-FROM golang:1.24-alpine AS build
-WORKDIR /src
-COPY go.mod ./
-COPY vendor ./vendor
-COPY cmd ./cmd
-RUN CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags="-s -w" -o /out/anvil-api ./cmd/anvil-api
-
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/anvil-api /anvil-api
+FROM python:3.12-slim
+WORKDIR /app
+COPY server /app/server
+RUN pip install --no-cache-dir /app/server
+USER nobody
 EXPOSE 8080
-ENTRYPOINT ["/anvil-api"]
+CMD ["uvicorn", "anvil_server.app:app", "--app-dir", "/app/server", "--host", "0.0.0.0", "--port", "8080"]
