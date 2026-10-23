@@ -27,7 +27,8 @@ def seal(run_id: str, project_id: str, events: list[dict], streams: list[dict],
             issues.append("missing causal parent")
     for sequences in by_stream.values():
         ordered = sorted(sequences)
-        if len(set(ordered)) != len(ordered) or any(right != left + 1 for left, right in zip(ordered, ordered[1:])):
+        if (ordered[0] != 0 or len(set(ordered)) != len(ordered) or
+                any(right != left + 1 for left, right in zip(ordered, ordered[1:]))):
             issues.append("sequence gap or duplicate")
 
     visiting, visited = set(), set()
@@ -51,6 +52,8 @@ def seal(run_id: str, project_id: str, events: list[dict], streams: list[dict],
     if any(invocation is None or requested[invocation] != completed[invocation] for invocation in requested | completed):
         issues.append("unmatched or ambiguous invocation")
     if gaps:
+        issues.append("capture gap")
+    if any(event["type"] == "capture.gap" for event in events):
         issues.append("capture gap")
     if issues and not acknowledge_incomplete:
         raise IncompleteCapture(issues[0])

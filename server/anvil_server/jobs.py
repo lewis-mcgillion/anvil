@@ -47,6 +47,40 @@ class JobQueue:
                    "seconds": self.lease_duration.total_seconds()})).mappings().first()
             return dict(row) if row else None
 
+    async def acquire_kind(self, project_id: UUID, lease_token: UUID, kind: str):
+        async with project_connection(self.engine, project_id) as connection:
+            row = (await connection.execute(text("""
+                UPDATE jobs SET status = 'running', attempts = attempts + 1,
+                  lease_token = :token, leased_at = clock_timestamp(),
+                  heartbeat_at = clock_timestamp(),
+                  lease_expires_at = clock_timestamp() + (:seconds * interval '1 second'),
+                  error = NULL, finished_at = NULL
+                WHERE id = (
+                  SELECT id FROM jobs WHERE project_id = :project AND kind = :kind
+                  AND attempts < max_attempts AND status = 'queued'
+                  ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
+                ) RETURNING id, status, attempts
+            """), {"project": project_id, "token": lease_token, "kind": kind,
+                   "seconds": self.lease_duration.total_seconds()})).mappings().first()
+            return dict(row) if row else None
+
+    async def acquire_job(self, project_id: UUID, job_id: UUID, lease_token: UUID):
+        async with project_connection(self.engine, project_id) as connection:
+            row = (await connection.execute(text("""
+                UPDATE jobs SET status = 'running', attempts = attempts + 1,
+                  lease_token = :token, leased_at = clock_timestamp(),
+                  heartbeat_at = clock_timestamp(),
+                  lease_expires_at = clock_timestamp() + (:seconds * interval '1 second'),
+                  error = NULL, finished_at = NULL
+                WHERE id = :job AND project_id = :project
+                  AND (status = 'queued' OR (status = 'running'
+                    AND lease_expires_at < clock_timestamp()))
+                  AND attempts < max_attempts
+                RETURNING id, status, attempts
+            """), {"project": project_id, "job": job_id, "token": lease_token,
+                   "seconds": self.lease_duration.total_seconds()})).mappings().first()
+            return dict(row) if row else None
+
     async def heartbeat(self, project_id: UUID, job_id: UUID, lease_token: UUID) -> None:
         await self._leased_update(project_id, job_id, lease_token, """
             heartbeat_at = clock_timestamp(),
@@ -98,6 +132,13 @@ class JobQueue:
 
     async def cancel(self, project_id: UUID, job_id: UUID) -> dict | None:
         async with project_connection(self.engine, project_id) as connection:
+            existing = (await connection.execute(text("""
+                SELECT status FROM jobs WHERE project_id = :project AND id = :job FOR UPDATE
+            """), {"project": project_id, "job": job_id})).scalar_one_or_none()
+            if existing in {"succeeded", "failed"}:
+                raise LeaseLost("Finished jobs cannot be cancelled")
+            if existing is None:
+                return None
             row = (await connection.execute(text("""
                 UPDATE jobs SET
                   status = CASE WHEN status = 'queued' THEN 'cancelled'
