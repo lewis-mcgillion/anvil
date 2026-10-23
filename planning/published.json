@@ -1,0 +1,496 @@
+{
+  "epics": {
+    "E01": {
+      "number": 2,
+      "id": 6001318457,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/2"
+    },
+    "E02": {
+      "number": 9,
+      "id": 6001321261,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/9"
+    },
+    "E03": {
+      "number": 16,
+      "id": 6001323573,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/16"
+    },
+    "E04": {
+      "number": 23,
+      "id": 6001325904,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/23"
+    },
+    "E05": {
+      "number": 30,
+      "id": 6001329269,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/30"
+    },
+    "E06": {
+      "number": 37,
+      "id": 6001332183,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/37"
+    },
+    "E07": {
+      "number": 44,
+      "id": 6001335422,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/44"
+    },
+    "E08": {
+      "number": 51,
+      "id": 6001339046,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/51"
+    },
+    "E09": {
+      "number": 58,
+      "id": 6001341851,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/58"
+    },
+    "E10": {
+      "number": 65,
+      "id": 6001344499,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/65"
+    },
+    "E11": {
+      "number": 72,
+      "id": 6001347144,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/72"
+    },
+    "E12": {
+      "number": 79,
+      "id": 6001349738,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/79"
+    },
+    "E13": {
+      "number": 86,
+      "id": 6001352286,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/86"
+    },
+    "E14": {
+      "number": 93,
+      "id": 6001354476,
+      "url": "https://github.com/lewis-mcgillion/anvil/issues/93"
+    }
+  },
+  "tasks": {
+    "ANVIL-001": {
+      "number": 3,
+      "id": 6001318767,
+      "parent": 2
+    },
+    "ANVIL-002": {
+      "number": 4,
+      "id": 6001319155,
+      "parent": 2
+    },
+    "ANVIL-003": {
+      "number": 5,
+      "id": 6001319508,
+      "parent": 2
+    },
+    "ANVIL-004": {
+      "number": 6,
+      "id": 6001320190,
+      "parent": 2
+    },
+    "ANVIL-005": {
+      "number": 7,
+      "id": 6001320464,
+      "parent": 2
+    },
+    "ANVIL-006": {
+      "number": 8,
+      "id": 6001320905,
+      "parent": 2
+    },
+    "ANVIL-007": {
+      "number": 10,
+      "id": 6001321609,
+      "parent": 9
+    },
+    "ANVIL-008": {
+      "number": 11,
+      "id": 6001321875,
+      "parent": 9
+    },
+    "ANVIL-009": {
+      "number": 12,
+      "id": 6001322166,
+      "parent": 9
+    },
+    "ANVIL-010": {
+      "number": 13,
+      "id": 6001322571,
+      "parent": 9
+    },
+    "ANVIL-011": {
+      "number": 14,
+      "id": 6001322983,
+      "parent": 9
+    },
+    "ANVIL-012": {
+      "number": 15,
+      "id": 6001323320,
+      "parent": 9
+    },
+    "ANVIL-013": {
+      "number": 17,
+      "id": 6001323993,
+      "parent": 16
+    },
+    "ANVIL-014": {
+      "number": 18,
+      "id": 6001324365,
+      "parent": 16
+    },
+    "ANVIL-015": {
+      "number": 19,
+      "id": 6001324705,
+      "parent": 16
+    },
+    "ANVIL-016": {
+      "number": 20,
+      "id": 6001324987,
+      "parent": 16
+    },
+    "ANVIL-017": {
+      "number": 21,
+      "id": 6001325351,
+      "parent": 16
+    },
+    "ANVIL-018": {
+      "number": 22,
+      "id": 6001325555,
+      "parent": 16
+    },
+    "ANVIL-019": {
+      "number": 24,
+      "id": 6001326502,
+      "parent": 23
+    },
+    "ANVIL-020": {
+      "number": 25,
+      "id": 6001326906,
+      "parent": 23
+    },
+    "ANVIL-021": {
+      "number": 26,
+      "id": 6001327351,
+      "parent": 23
+    },
+    "ANVIL-022": {
+      "number": 27,
+      "id": 6001327812,
+      "parent": 23
+    },
+    "ANVIL-023": {
+      "number": 28,
+      "id": 6001328086,
+      "parent": 23
+    },
+    "ANVIL-024": {
+      "number": 29,
+      "id": 6001328462,
+      "parent": 23
+    },
+    "ANVIL-025": {
+      "number": 31,
+      "id": 6001329607,
+      "parent": 30
+    },
+    "ANVIL-026": {
+      "number": 32,
+      "id": 6001330044,
+      "parent": 30
+    },
+    "ANVIL-027": {
+      "number": 33,
+      "id": 6001330414,
+      "parent": 30
+    },
+    "ANVIL-028": {
+      "number": 34,
+      "id": 6001331063,
+      "parent": 30
+    },
+    "ANVIL-029": {
+      "number": 35,
+      "id": 6001331328,
+      "parent": 30
+    },
+    "ANVIL-030": {
+      "number": 36,
+      "id": 6001331554,
+      "parent": 30
+    },
+    "ANVIL-031": {
+      "number": 38,
+      "id": 6001332805,
+      "parent": 37
+    },
+    "ANVIL-032": {
+      "number": 39,
+      "id": 6001333162,
+      "parent": 37
+    },
+    "ANVIL-033": {
+      "number": 40,
+      "id": 6001333914,
+      "parent": 37
+    },
+    "ANVIL-034": {
+      "number": 41,
+      "id": 6001334257,
+      "parent": 37
+    },
+    "ANVIL-035": {
+      "number": 42,
+      "id": 6001334580,
+      "parent": 37
+    },
+    "ANVIL-036": {
+      "number": 43,
+      "id": 6001334975,
+      "parent": 37
+    },
+    "ANVIL-037": {
+      "number": 45,
+      "id": 6001336201,
+      "parent": 44
+    },
+    "ANVIL-038": {
+      "number": 46,
+      "id": 6001336443,
+      "parent": 44
+    },
+    "ANVIL-039": {
+      "number": 47,
+      "id": 6001336766,
+      "parent": 44
+    },
+    "ANVIL-040": {
+      "number": 48,
+      "id": 6001337574,
+      "parent": 44
+    },
+    "ANVIL-041": {
+      "number": 49,
+      "id": 6001337853,
+      "parent": 44
+    },
+    "ANVIL-042": {
+      "number": 50,
+      "id": 6001338351,
+      "parent": 44
+    },
+    "ANVIL-043": {
+      "number": 52,
+      "id": 6001339417,
+      "parent": 51
+    },
+    "ANVIL-044": {
+      "number": 53,
+      "id": 6001339774,
+      "parent": 51
+    },
+    "ANVIL-045": {
+      "number": 54,
+      "id": 6001340279,
+      "parent": 51
+    },
+    "ANVIL-046": {
+      "number": 55,
+      "id": 6001340790,
+      "parent": 51
+    },
+    "ANVIL-047": {
+      "number": 56,
+      "id": 6001341138,
+      "parent": 51
+    },
+    "ANVIL-048": {
+      "number": 57,
+      "id": 6001341518,
+      "parent": 51
+    },
+    "ANVIL-049": {
+      "number": 59,
+      "id": 6001342193,
+      "parent": 58
+    },
+    "ANVIL-050": {
+      "number": 60,
+      "id": 6001342598,
+      "parent": 58
+    },
+    "ANVIL-051": {
+      "number": 61,
+      "id": 6001342946,
+      "parent": 58
+    },
+    "ANVIL-052": {
+      "number": 62,
+      "id": 6001343269,
+      "parent": 58
+    },
+    "ANVIL-053": {
+      "number": 63,
+      "id": 6001343556,
+      "parent": 58
+    },
+    "ANVIL-054": {
+      "number": 64,
+      "id": 6001343933,
+      "parent": 58
+    },
+    "ANVIL-055": {
+      "number": 66,
+      "id": 6001344748,
+      "parent": 65
+    },
+    "ANVIL-056": {
+      "number": 67,
+      "id": 6001345105,
+      "parent": 65
+    },
+    "ANVIL-057": {
+      "number": 68,
+      "id": 6001345628,
+      "parent": 65
+    },
+    "ANVIL-058": {
+      "number": 69,
+      "id": 6001346000,
+      "parent": 65
+    },
+    "ANVIL-059": {
+      "number": 70,
+      "id": 6001346389,
+      "parent": 65
+    },
+    "ANVIL-060": {
+      "number": 71,
+      "id": 6001346747,
+      "parent": 65
+    },
+    "ANVIL-061": {
+      "number": 73,
+      "id": 6001347451,
+      "parent": 72
+    },
+    "ANVIL-062": {
+      "number": 74,
+      "id": 6001347764,
+      "parent": 72
+    },
+    "ANVIL-063": {
+      "number": 75,
+      "id": 6001348170,
+      "parent": 72
+    },
+    "ANVIL-064": {
+      "number": 76,
+      "id": 6001348435,
+      "parent": 72
+    },
+    "ANVIL-065": {
+      "number": 77,
+      "id": 6001348855,
+      "parent": 72
+    },
+    "ANVIL-066": {
+      "number": 78,
+      "id": 6001349109,
+      "parent": 72
+    },
+    "ANVIL-067": {
+      "number": 80,
+      "id": 6001350109,
+      "parent": 79
+    },
+    "ANVIL-068": {
+      "number": 81,
+      "id": 6001350398,
+      "parent": 79
+    },
+    "ANVIL-069": {
+      "number": 82,
+      "id": 6001350753,
+      "parent": 79
+    },
+    "ANVIL-070": {
+      "number": 83,
+      "id": 6001351085,
+      "parent": 79
+    },
+    "ANVIL-071": {
+      "number": 84,
+      "id": 6001351412,
+      "parent": 79
+    },
+    "ANVIL-072": {
+      "number": 85,
+      "id": 6001351773,
+      "parent": 79
+    },
+    "ANVIL-073": {
+      "number": 87,
+      "id": 6001352608,
+      "parent": 86
+    },
+    "ANVIL-074": {
+      "number": 88,
+      "id": 6001352920,
+      "parent": 86
+    },
+    "ANVIL-075": {
+      "number": 89,
+      "id": 6001353190,
+      "parent": 86
+    },
+    "ANVIL-076": {
+      "number": 90,
+      "id": 6001353488,
+      "parent": 86
+    },
+    "ANVIL-077": {
+      "number": 91,
+      "id": 6001353846,
+      "parent": 86
+    },
+    "ANVIL-078": {
+      "number": 92,
+      "id": 6001354135,
+      "parent": 86
+    },
+    "ANVIL-079": {
+      "number": 94,
+      "id": 6001354874,
+      "parent": 93
+    },
+    "ANVIL-080": {
+      "number": 95,
+      "id": 6001355170,
+      "parent": 93
+    },
+    "ANVIL-081": {
+      "number": 96,
+      "id": 6001355548,
+      "parent": 93
+    },
+    "ANVIL-082": {
+      "number": 97,
+      "id": 6001355884,
+      "parent": 93
+    },
+    "ANVIL-083": {
+      "number": 98,
+      "id": 6001356434,
+      "parent": 93
+    },
+    "ANVIL-084": {
+      "number": 99,
+      "id": 6001356927,
+      "parent": 93
+    }
+  }
+}
