@@ -20,9 +20,20 @@ Scenarios covered:
 * `redaction.json` — a redacted credential and replay ineligibility.
 * `missing-events.json` — an explicit capture gap and incomplete capture.
 * `retries.json` — a failed first attempt followed by a successful retry.
+* `cancellation.json` — cancellation with an explicit cleanup outcome.
+
+Cancellation is represented as an execution outcome, not a successful
+completion. Consumers must release runner, stream, and temporary artifact
+resources before reporting `cancelled`; a cancellation after a capture gap is
+`sealed_incomplete` and cannot be replayed.
 
 Verify the corpus without installing dependencies:
 
 ```sh
 python3 fixtures/conformance/v1/verify.py
 ```
+
+The same manifest is independently consumable by the standard-library Go
+validator (`go run fixtures/conformance/v1/verify.go`) and the TypeScript
+validator (`npx tsx fixtures/conformance/v1/verify.ts`). These validators are
+intentionally read-only and do not load or execute an agent, model, or tool.

@@ -22,7 +22,7 @@ def canonical(value: object) -> bytes:
 def verify() -> None:
     manifest = json.loads((ROOT / "manifest.json").read_text())
     assert manifest["canonicalization"] == "RFC8785"
-    assert len(manifest["fixtures"]) == 6
+    assert len(manifest["fixtures"]) == 7
     for entry in manifest["fixtures"]:
         recording = json.loads((ROOT / entry["file"]).read_text())
         assert recording["fixture_id"] == entry["id"]

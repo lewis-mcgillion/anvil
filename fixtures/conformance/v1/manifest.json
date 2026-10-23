@@ -8,6 +8,7 @@
     {"id": "errors", "file": "errors.json", "sha256": "5a7fea8adb70a3bb9951fe892ffa1f7c26da11740d764ea540afbb083c32a922"},
     {"id": "redaction", "file": "redaction.json", "sha256": "37dce8b19b3181fa93127aca452987bcc003a6154a59c7ea6012d68fdcc4eea2"},
     {"id": "missing-events", "file": "missing-events.json", "sha256": "5d76751ee50141442f7607b0f8667baf886a0366a73dc753479707478193a941"},
-    {"id": "retries", "file": "retries.json", "sha256": "19c0f0900fc20f6783700ce2dd4baa9fa1a005dd0ce84fb73e2c0877142eb67a"}
+    {"id": "retries", "file": "retries.json", "sha256": "0dcebb7076378144886985eb3b3527badaf74182667f760444cf413921fb322f"},
+    {"id": "cancellation", "file": "cancellation.json", "sha256": "1b8e74a9a25f74e4e121648375ccb88ad1d9dcc1bb0ced058d0dcf7686618f94"}
   ]
 }
