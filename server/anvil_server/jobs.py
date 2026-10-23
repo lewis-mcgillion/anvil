@@ -39,7 +39,7 @@ class JobQueue:
                   error = NULL, finished_at = NULL
                 WHERE id = (
                   SELECT id FROM jobs WHERE project_id = :project AND attempts < max_attempts
-                  AND (status = 'queued' OR (status IN ('running','cancelling')
+                  AND (status = 'queued' OR (status = 'running'
                     AND lease_expires_at < clock_timestamp()))
                   ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
                 ) RETURNING id, status, attempts

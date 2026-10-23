@@ -138,6 +138,8 @@ async def test_expired_cancelled_lease_never_requeues(engine):
             UPDATE jobs SET lease_expires_at = clock_timestamp() - interval '1 second'
             WHERE project_id = :project AND id = :job
         """), {"project": PROJECT, "job": job_id})
+    await queue.acquire(PROJECT, new_uuid7())
+    assert (await queue.get(PROJECT, job_id))["status"] == "cancelling"
     assert await queue.recover_expired(PROJECT) >= 1
     assert (await queue.get(PROJECT, job_id))["status"] == "cancelled"
     assert await queue.acquire_job(PROJECT, job_id, new_uuid7()) is None
