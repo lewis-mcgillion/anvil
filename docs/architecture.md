@@ -20,14 +20,14 @@ Any unmatched or ambiguous tool invocation fails closed. No execution mode silen
 
 ## Stack, layout and dependencies
 
-- Go API and worker in a modular monolith. REST is specified by `api/openapi.yaml`; internal runner messages use versioned protobuf over Unix domain sockets (`proto/anvil/runner/v1/runner.proto`). Contract semantics (errors, scopes, retries, idempotency, cancellation) live in [docs/api-contract.md](api-contract.md); evolution rules live in [docs/compatibility.md](compatibility.md).
+- Python 3.12 API and worker in a modular monolith, using FastAPI, Pydantic v2, SQLAlchemy 2 async and asyncpg. PostgreSQL migration SQL remains authoritative, with Alembic managing subsequent revisions. REST is specified by `api/openapi.yaml`; runner control remains a versioned, fail-closed Unix-domain-socket protocol. Contract semantics (errors, scopes, retries, idempotency, cancellation) live in [docs/api-contract.md](api-contract.md); evolution rules live in [docs/compatibility.md](compatibility.md). Runtime modules live under `server/anvil_server/`.
 - PostgreSQL for authoritative metadata, immutable event payloads (JSONB), artifacts, suites, job leases and audit events. No Redis or dedicated object storage for MVP.
 - Python capture SDK with Google ADK hooks as the first supported integration. OpenTelemetry trace/span IDs correlate capture to existing tracing. LangGraph follows after release.
 - React and TypeScript with generated API bindings, accessible components and virtualized timeline rendering.
 - OCI-digest-pinned Python runner container with no network, production secrets, host mounts or Docker socket. A separate model broker is the only component allowed to access explicitly configured model endpoints.
 - Docker Compose for localhost installation; secure self-host examples with TLS/OIDC follow. Apache-2.0 source, signed release artifacts and SBOMs.
 
-Suggested directories: `cmd/{anvil-api,anvil-worker,anvil-supervisor,anvil}`, `internal/{capture,events,storage,playback,replay,divergence,suites,jobs,broker,auth}`, `api/`, `proto/`, `migrations/`, `sdk/python/`, `adapters/google-adk/`, `runner/python/`, `web/`, `fixtures/`, `examples/`, `benchmarks/`, `deploy/compose/`, `docs/`.
+Suggested directories: `server/anvil_server/{api,auth,capture,events,storage,playback,replay,divergence,suites,jobs,broker}`, `api/`, `proto/`, `migrations/`, `sdk/python/`, `adapters/google-adk/`, `runner/python/`, `web/`, `fixtures/`, `examples/`, `benchmarks/`, `deploy/compose/`, `docs/`.
 
 ## Storage and versioning
 
