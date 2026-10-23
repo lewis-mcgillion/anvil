@@ -346,6 +346,7 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
         """), {"id": key_id, "project": PROJECT, "principal": principal,
                "name": str(key_id), "prefix": token[:16], "hash": key_hash(token)})
     app.state.engine = engine
+    app.state.cursor_secret = b"0123456789abcdef0123456789abcdef"
     headers = {"Authorization": f"Bearer {token}"}
     run_id, stream_id = await create_run(engine, PROJECT)
     await ingest(engine, PROJECT, run_id, stream_id, [Event(
@@ -354,6 +355,12 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
         payload={}, replay_safe=True)])
     sealed = await seal_run(engine, PROJECT, run_id)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        runs = await client.get("/v1/runs", params={"project_id": str(PROJECT), "limit": 1}, headers=headers)
+        assert runs.status_code == 200, runs.text
+        assert all(item["project_id"] == str(PROJECT) for item in runs.json()["items"])
+        assert (await client.get("/v1/runs", params={"project_id": str(
+            UUID("0199b167-0000-7000-8000-000000000012"))}, headers=headers)).status_code == 401
+        assert (await client.get("/v1/runs", headers=headers)).status_code == 400
         recording = await client.get(f"/v1/projects/{PROJECT}/recordings/{sealed['recording_id']}", headers=headers)
         assert recording.status_code == 200, recording.text
         assert recording.json()["event_count"] == 1

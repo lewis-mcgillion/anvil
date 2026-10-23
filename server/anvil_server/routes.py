@@ -29,6 +29,16 @@ from .security import AccessDenied, Unauthenticated, authorize
 router = APIRouter(prefix="/v1")
 
 
+@router.get("/runs")
+async def list_runs(request: Request, project_id: UUID | None = None, limit: int = 100,
+                    cursor: str | None = None, execution_state: str | None = None,
+                    capture_state: str | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await list_project_runs(request, project_id, limit, cursor,
+                                   execution_state, capture_state)
+
+
 class RunCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     agent_name: str = Field(min_length=1, max_length=256)

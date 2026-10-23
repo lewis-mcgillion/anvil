@@ -57,3 +57,9 @@ def test_capture_without_credentials_is_rejected():
     response = client.post("/v1/projects/0199b167-0000-7000-8000-000000000011/runs",
                            json={"agent_name": "test", "adapter": "adk", "adapter_version": "1"})
     assert response.status_code == 503
+
+
+def test_unscoped_run_list_is_rejected():
+    response = client.get("/v1/runs")
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "application/problem+json"
