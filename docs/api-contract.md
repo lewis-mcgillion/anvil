@@ -106,6 +106,10 @@ Cancel with `POST /jobs/{id}:cancel`:
   reclaims resources — container, Unix socket, fixture mounts, job lease —
   on cancellation, failure or timeout. Cleanup is the supervisor's duty,
   never the caller's.
+- A worker owns a lease with a unique token and must heartbeat before the
+  lease expires. Expired leases are recovered with `outcome: interrupted`;
+  work is retried up to its attempt limit, then fails explicitly. A stale
+  worker cannot heartbeat or complete a reassigned job.
 
 The runner protocol applies the same rules: `Cancel` stops the runner,
 which must reply `RunnerFinished(CANCELLED)`; the supervisor then closes

@@ -1752,6 +1752,9 @@ components:
     JobKind:
       type: string
       enum: [seal, export, import, reexecution, comparison, suite_run, deletion]
+    JobOutcome:
+      type: string
+      enum: [none, succeeded, failed, cancelled, interrupted]
     Job:
       type: object
       additionalProperties: false
@@ -1762,6 +1765,9 @@ components:
           $ref: '#/components/schemas/JobKind'
         status:
           $ref: '#/components/schemas/JobStatus'
+        outcome:
+          $ref: '#/components/schemas/JobOutcome'
+          description: Durable outcome, including interrupted work recovered after a worker loss.
         attempts:
           type: integer
           minimum: 0
