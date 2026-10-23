@@ -65,6 +65,35 @@ async def test_agent_version_requires_pinned_image_and_project_scope(engine):
         """), {"project": PROJECT, "image": payload["image"]})).scalar_one() == 1
 
 
+@pytest.mark.asyncio
+async def test_metrics_require_read_scope_and_hide_other_projects(engine):
+    token = issue_key()
+    principal, key_id = new_uuid7(), new_uuid7()
+    async with engine.begin() as connection:
+        await connection.execute(text("""
+            INSERT INTO principals(id, organization_id, subject, kind)
+            VALUES (:id, '0199b167-0000-7000-8000-000000000001', :subject, 'service')
+        """), {"id": principal, "subject": str(principal)})
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("""
+            INSERT INTO api_keys(id, organization_id, project_id, principal_id,
+              name, key_prefix, key_hash, scopes)
+            VALUES (:id, '0199b167-0000-7000-8000-000000000001', :project,
+              :principal, :name, :prefix, :hash, ARRAY['metrics:read'])
+        """), {"id": key_id, "project": PROJECT, "principal": principal,
+               "name": str(key_id), "prefix": token[:16], "hash": key_hash(token)})
+    app.state.engine = engine
+    headers = {"Authorization": f"Bearer {token}"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        assert (await client.get("/v1/metrics", headers=headers)).status_code == 400
+        response = await client.get("/v1/metrics", params={"project_id": str(PROJECT)}, headers=headers)
+        assert response.status_code == 200, response.text
+        assert 'anvil_resources{resource="runs"}' in response.text
+        assert str(PROJECT) not in response.text
+        assert (await client.get("/v1/metrics", params={"project_id":
+            "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401
+
+
 PROJECT = UUID("0199b167-0000-7000-8000-000000000011")
 RUN = UUID("0199b167-0000-7000-8000-000000000021")
 STREAM = UUID("0199b167-0000-7000-8000-000000000031")

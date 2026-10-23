@@ -39,6 +39,26 @@ async def list_runs(request: Request, project_id: UUID | None = None, limit: int
                                    execution_state, capture_state)
 
 
+@router.get("/metrics")
+async def project_metrics(request: Request, project_id: UUID | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    engine, error = await scoped(request, project_id, "metrics:read")
+    if error is not None:
+        return error
+    async with project_connection(engine, project_id) as connection:
+        counts = {}
+        for resource, table in (("runs", "runs"), ("recordings", "recordings"),
+                                ("events", "events"), ("jobs", "jobs")):
+            counts[resource] = (await connection.execute(text(
+                f"SELECT count(*) FROM {table} WHERE project_id = :project"),
+                {"project": project_id})).scalar_one()
+    exposition = "# TYPE anvil_resources gauge\n"
+    for resource, count in counts.items():
+        exposition += f'anvil_resources{{resource="{resource}"}} {count}\n'
+    return Response(content=exposition, media_type="text/plain; version=0.0.4")
+
+
 class RunCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     agent_name: str = Field(min_length=1, max_length=256)
