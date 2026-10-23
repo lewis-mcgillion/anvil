@@ -55,6 +55,14 @@ removal fails CI. Additive changes require regenerating the golden with
 `UPDATE_GOLDEN=1 go test ./internal/contracts/...` in the same PR as the
 proto change, plus an entry in this file.
 
+## Authorization storage
+
+Migration `0002_authorization` adds project-scoped API keys. Only a SHA-256
+hash is persisted; the generated bearer secret is returned once. Keys may be
+rotated by creating a replacement with `rotated_from`, and revocation is a
+timestamped state transition. The migration rejects unknown scopes and
+prevents capture keys from being combined with read or replay access.
+
 ## Process for contract changes
 
 1. Update `api/openapi.yaml` and/or `proto/anvil/runner/v1/runner.proto`.
