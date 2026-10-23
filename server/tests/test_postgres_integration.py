@@ -233,6 +233,34 @@ async def test_queued_seal_rejects_new_events_and_completed_retries(engine):
 
 
 @pytest.mark.asyncio
+async def test_seal_worker_recovers_expired_lease_without_duplicate_recording(engine):
+    run_id, stream_id = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, run_id, stream_id, [Event(
+        schema_version="1", event_id=new_uuid7(), run_id=run_id,
+        stream_id=stream_id, sequence=0, type="run.completed",
+        occurred_at=datetime.now(timezone.utc), payload={}, replay_safe=True)])
+    job_id = await queue_seal(engine, PROJECT, run_id)
+    queue = JobQueue(engine, timedelta(seconds=30))
+    abandoned_token = new_uuid7()
+    await queue.acquire_job(PROJECT, job_id, abandoned_token)
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("""
+            UPDATE jobs SET lease_expires_at = clock_timestamp() - interval '1 second'
+            WHERE project_id = :project AND id = :job
+        """), {"project": PROJECT, "job": job_id})
+    assert await queue.recover_expired(PROJECT) >= 1
+    assert (await queue.get(PROJECT, job_id))["status"] == "queued"
+    assert await process_seal(engine, PROJECT, job_id)
+    with pytest.raises(LeaseLost):
+        await queue.complete(PROJECT, job_id, abandoned_token, "succeeded")
+    assert not await process_seal(engine, PROJECT, job_id)
+    async with project_connection(engine, PROJECT) as connection:
+        assert (await connection.execute(text("""
+            SELECT count(*) FROM recordings WHERE project_id = :project AND run_id = :run
+        """), {"project": PROJECT, "run": run_id})).scalar_one() == 1
+
+
+@pytest.mark.asyncio
 async def test_incomplete_seal_job_fails_without_recording(engine):
     run_id, _ = await create_run(engine, PROJECT)
     job_id = await queue_seal(engine, PROJECT, run_id)
