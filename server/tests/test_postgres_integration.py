@@ -22,6 +22,46 @@ from anvil_server.app import app
 from httpx import ASGITransport, AsyncClient
 
 
+@pytest.mark.asyncio
+async def test_agent_version_requires_pinned_image_and_project_scope(engine):
+    token = issue_key()
+    principal, key_id = new_uuid7(), new_uuid7()
+    async with engine.begin() as connection:
+        await connection.execute(text("""
+            INSERT INTO principals(id, organization_id, subject, kind)
+            VALUES (:id, '0199b167-0000-7000-8000-000000000001', :subject, 'service')
+        """), {"id": principal, "subject": str(principal)})
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("""
+            INSERT INTO api_keys(id, organization_id, project_id, principal_id,
+              name, key_prefix, key_hash, scopes)
+            VALUES (:id, '0199b167-0000-7000-8000-000000000001', :project,
+              :principal, :name, :prefix, :hash, ARRAY['replay:write'])
+        """), {"id": key_id, "project": PROJECT, "principal": principal,
+               "name": str(key_id), "prefix": token[:16], "hash": key_hash(token)})
+    app.state.engine = engine
+    payload = {"image": "registry.example/agent@sha256:" + "a" * 64,
+               "entrypoint": "/app/agent", "adapter": "adk", "adapter_version": "1"}
+    headers = {"Authorization": f"Bearer {token}"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        url = f"/v1/projects/{PROJECT}/agent-versions"
+        invalid = await client.post(url, json={**payload, "image": "registry.example/agent:latest"}, headers=headers)
+        assert invalid.status_code == 400
+        created = await client.post(url, json=payload, headers=headers)
+        assert created.status_code == 201, created.text
+        repeated = await client.post(url, json=payload, headers=headers)
+        assert repeated.status_code == 201, repeated.text
+        assert created.json()["id"] == repeated.json()["id"]
+        wrong_project = await client.post(
+            "/v1/projects/0199b167-0000-7000-8000-000000000012/agent-versions",
+            json=payload, headers=headers)
+        assert wrong_project.status_code == 401
+    async with project_connection(engine, PROJECT) as connection:
+        assert (await connection.execute(text("""
+            SELECT count(*) FROM agent_versions WHERE project_id = :project AND image = :image
+        """), {"project": PROJECT, "image": payload["image"]})).scalar_one() == 1
+
+
 PROJECT = UUID("0199b167-0000-7000-8000-000000000011")
 RUN = UUID("0199b167-0000-7000-8000-000000000021")
 STREAM = UUID("0199b167-0000-7000-8000-000000000031")

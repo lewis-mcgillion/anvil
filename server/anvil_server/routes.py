@@ -74,6 +74,33 @@ class DeletionCreate(BaseModel):
     target_id: UUID
 
 
+class AgentVersionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    image: str = Field(pattern=r"^[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}$")
+    entrypoint: str = Field(min_length=1, max_length=512)
+    adapter: str = Field(min_length=1, max_length=64)
+    adapter_version: str = Field(min_length=1, max_length=64)
+
+
+@router.post("/projects/{project_id}/agent-versions", status_code=201)
+async def register_agent_version(request: Request, project_id: UUID, payload: AgentVersionCreate):
+    engine, error = await scoped(request, project_id, "replay:write")
+    if error is not None:
+        return error
+    async with project_connection(engine, project_id) as connection:
+        row = (await connection.execute(text("""
+            INSERT INTO agent_versions (id, project_id, image, entrypoint, adapter, adapter_version)
+            VALUES (:id, :project, :image, :entrypoint, :adapter, :version)
+            ON CONFLICT (project_id, image, entrypoint, adapter, adapter_version)
+            DO UPDATE SET image = EXCLUDED.image
+            RETURNING id, project_id, image, entrypoint, adapter, adapter_version, created_at
+        """), {"id": new_uuid7(), "project": project_id, "image": payload.image,
+               "entrypoint": payload.entrypoint, "adapter": payload.adapter,
+               "version": payload.adapter_version})).mappings().one()
+    return {**{key: str(value) if isinstance(value, UUID) else value for key, value in row.items()
+               if key != "created_at"}, "created_at": row["created_at"].isoformat()}
+
+
 @router.get("/projects/{project_id}/runs")
 async def list_project_runs(request: Request, project_id: UUID, limit: int = 100,
                             cursor: str | None = None, execution_state: str | None = None,

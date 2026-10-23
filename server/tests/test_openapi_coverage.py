@@ -13,7 +13,7 @@ KNOWN_MISSING = {
     "GET /runs/{run_id}/watch", "GET /recordings/{recording_id}",
     "GET /recordings/{recording_id}/projection",
     "POST /recordings/{recording_id}/exports", "POST /projects/{project_id}/imports",
-    "POST /projects/{project_id}/agent-versions", "POST /reexecutions",
+    "POST /reexecutions",
     "GET /reexecutions/{reexecution_id}", "GET /jobs/{job_id}",
     "POST /jobs/{job_id}:cancel", "POST /comparisons",
     "GET /comparisons/{comparison_id}", "GET /comparisons/{comparison_id}/divergences",
