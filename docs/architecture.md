@@ -54,7 +54,7 @@ All project-owned rows require a project scope. Application authorization and Po
 
 Event types: `run.started`, `run.completed`, `run.failed`, `message.created`, `model.requested`, `model.chunk`, `model.completed`, `model.failed`, `tool.requested`, `tool.completed`, `tool.failed`, `state.checkpoint`, `capture.gap`, `fault.applied`.
 
-Events are idempotent by event identity plus content hash; conflicting identities/sequences return HTTP 409 without partial insertion. Sequences are per stream, not a fictitious total global order. Causal parents may arrive later; sealing validates them. Capture completeness (`open`, `sealing`, `sealed_complete`, `sealed_incomplete`) differs from execution outcome (`running`, `succeeded`, `failed`, `cancelled`, `unknown`).
+Events are idempotent by event identity plus content hash; conflicting identities/sequences return HTTP 409 without partial insertion. Sequences are per stream, not a fictitious total global order. Causal parents may arrive later; sealing validates them. Capture completeness (`open`, `sealing`, `sealed_complete`, `sealed_incomplete`) differs from execution outcome (`running`, `succeeded`, `failed`, `cancelled`, `unknown`). Sealing is fail-closed unless incomplete evidence is explicitly acknowledged; an immutable manifest records the canonical event hash, gaps, outcome and replay eligibility. A sealed run rejects late events and repeated sealing.
 
 Defaults: max event 256 KiB, ingest batch 4 MiB or 500 events, artifact 8 MiB, run 64 MiB, SDK buffer 2000 events or 16 MiB, 30-day retention, list page 100 (max 1000). Failed capture must report gaps, never silently succeed. Artifacts and recordings carry SHA-256 hashes. No pickle or arbitrary object deserialization is accepted from recordings.
 
