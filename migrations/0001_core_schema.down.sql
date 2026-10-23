@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS recordings;
+DROP TABLE IF EXISTS artifacts;
+DROP TABLE IF EXISTS events;
+DROP TABLE IF EXISTS run_streams;
+DROP TABLE IF EXISTS runs;
+DROP TABLE IF EXISTS project_grants;
+DROP TABLE IF EXISTS principals;
+DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS organizations;
