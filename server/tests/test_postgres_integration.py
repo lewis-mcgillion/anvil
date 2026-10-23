@@ -436,6 +436,13 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
         recording = await client.get(f"/v1/projects/{PROJECT}/recordings/{sealed['recording_id']}", headers=headers)
         assert recording.status_code == 200, recording.text
         assert recording.json()["event_count"] == 1
+        short_url = f"/v1/recordings/{sealed['recording_id']}"
+        short_recording = await client.get(short_url, params={"project_id": str(PROJECT)}, headers=headers)
+        assert short_recording.status_code == 200
+        assert short_recording.json() == recording.json()
+        assert (await client.get(short_url, headers=headers)).status_code == 400
+        assert (await client.get(short_url, params={"project_id":
+            "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401
         from anvil_server.bundles import import_bundle
         archive_response = await client.get(
             f"/v1/projects/{PROJECT}/recordings/{sealed['recording_id']}/archive", headers=headers)
@@ -447,6 +454,11 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
         projection_url = f"/v1/projects/{PROJECT}/recordings/{sealed['recording_id']}/projection"
         projection = await client.get(projection_url, headers=headers)
         assert projection.status_code == 200, projection.text
+        short_projection = await client.get(f"{short_url}/projection",
+                                            params={"project_id": str(PROJECT)}, headers=headers)
+        assert short_projection.status_code == 200
+        assert short_projection.json() == projection.json()
+        assert (await client.get(f"{short_url}/projection", headers=headers)).status_code == 400
         assert len(projection.json()["state"]["events"]) == 1
         assert (await client.get(projection_url, headers=headers)).json()["canonical_hash"] == projection.json()["canonical_hash"]
         before = await client.get(projection_url, params={"before_event_id": str(

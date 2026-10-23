@@ -367,6 +367,13 @@ async def get_recording(request: Request, project_id: UUID, recording_id: UUID):
             "event_count": row["manifest"]["event_count"], "sealed_at": row["created_at"].isoformat()}
 
 
+@router.get("/recordings/{recording_id}")
+async def get_recording_by_id(request: Request, recording_id: UUID, project_id: UUID | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await get_recording(request, project_id, recording_id)
+
+
 @router.get("/projects/{project_id}/recordings/{recording_id}/projection")
 async def project_recording(request: Request, project_id: UUID, recording_id: UUID,
                             projection_version: str = "1", before_event_id: UUID | None = None):
@@ -401,6 +408,16 @@ async def project_recording(request: Request, project_id: UUID, recording_id: UU
     canonical = json.dumps(state, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     return {"recording_id": str(recording_id), "projection_version": projection_version,
             "canonical_hash": "sha256:" + hashlib.sha256(canonical).hexdigest(), "state": state}
+
+
+@router.get("/recordings/{recording_id}/projection")
+async def project_recording_by_id(request: Request, recording_id: UUID,
+                                  project_id: UUID | None = None, projection_version: str = "1",
+                                  before_event_id: UUID | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await project_recording(request, project_id, recording_id,
+                                   projection_version, before_event_id)
 
 
 @router.get("/projects/{project_id}/recordings/{recording_id}/archive")
