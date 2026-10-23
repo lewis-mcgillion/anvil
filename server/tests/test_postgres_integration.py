@@ -485,6 +485,12 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
         status = await client.get(f"{deletion_url}/{deletion.json()['deletion_id']}", headers=headers)
         assert status.status_code == 200, status.text
         assert status.json()["status"] == "queued"
+        short_deletion = f"/v1/deletions/{deletion.json()['deletion_id']}"
+        assert (await client.get(short_deletion, params={"project_id": str(PROJECT)},
+                                 headers=headers)).json() == status.json()
+        assert (await client.get(short_deletion, headers=headers)).status_code == 400
+        assert (await client.get(short_deletion, params={"project_id":
+            "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401
         job_url = f"/v1/jobs/{deletion.json()['job_id']}"
         job_status = await client.get(job_url, params={"project_id": str(PROJECT)}, headers=headers)
         assert job_status.status_code == 200

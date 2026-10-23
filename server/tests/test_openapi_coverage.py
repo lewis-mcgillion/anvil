@@ -17,7 +17,7 @@ KNOWN_MISSING = {
     "GET /comparisons/{comparison_id}", "GET /comparisons/{comparison_id}/divergences",
     "POST /projects/{project_id}/suites", "POST /suites/{suite_id}/versions",
     "POST /suite-runs", "GET /suite-runs/{suite_run_id}",
-    "GET /suite-runs/{suite_run_id}/report", "GET /deletions/{deletion_id}",
+    "GET /suite-runs/{suite_run_id}/report",
     "GET /metrics",
 }
 

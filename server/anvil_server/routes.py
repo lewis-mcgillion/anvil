@@ -735,3 +735,10 @@ async def get_deletion(request: Request, project_id: UUID, deletion_id: UUID):
             "target_kind": row["target_kind"], "target_id": str(row["target_id"]),
             "status": row["status"], "audit_event_id": str(row["audit_event_id"]) if row["audit_event_id"] else None,
             "created_at": row["created_at"].isoformat()}
+
+
+@router.get("/deletions/{deletion_id}")
+async def get_deletion_by_id(request: Request, deletion_id: UUID, project_id: UUID | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await get_deletion(request, project_id, deletion_id)
