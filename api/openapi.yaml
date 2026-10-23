@@ -1,0 +1,2010 @@
+openapi: 3.0.3
+info:
+  title: Anvil API
+  version: 1.0.0
+  description: |
+    Anvil REST API, base path `/v1`.
+
+    Contract rules (see `docs/architecture.md` and `docs/api-contract.md`):
+    - JSON over HTTPS everywhere except loopback HTTP for local installs.
+    - Strict request decoding: unknown fields, wrong types and malformed
+      enums are rejected with `400` and a `problem+json` body.
+    - Errors use RFC 9457 `application/problem+json`. Throttling returns
+      `429` with a `Retry-After` header; asynchronous work returns `202`
+      with a job.
+    - Creating resources is idempotent: pass a unique `Idempotency-Key`
+      header. Replays of the same key return the original result;
+      conflicting payloads under a reused key return `409`.
+    - Listing endpoints use stable opaque cursors (`cursor`, `limit`,
+      `next_cursor`).
+    - Authentication is a scoped bearer API key (`Authorization: Bearer`).
+      Scopes: `capture:write`, `runs:read`, `replay:write`, `suites:write`,
+      `suites:read`, `admin`, `metrics:read`.
+    - Playback is read-only and never schedules execution. No endpoint in
+      this specification executes arbitrary commands, URLs or original
+      production tools; re-execution only references pre-registered,
+      digest-pinned artifacts.
+
+tags:
+  - name: capture
+  - name: playback
+  - name: replay
+  - name: suites
+  - name: jobs
+  - name: admin
+  - name: health
+
+servers:
+  - url: http://localhost:8080/v1
+    description: Local loopback install (HTTP permitted on loopback only).
+  - url: https://anvil.example.com/v1
+    description: Self-hosted deployment (TLS required).
+
+security:
+  - bearerAuth: []
+
+paths:
+  /projects:
+    post:
+      tags: [capture]
+      operationId: createProject
+      summary: Create a project.
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreate'
+      responses:
+        '201':
+          description: Project created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+    get:
+      tags: [capture]
+      operationId: listProjects
+      summary: List projects visible to the principal.
+      security:
+        - bearerAuth: [runs:read]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of projects.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /projects/{project_id}:
+    patch:
+      tags: [capture]
+      operationId: updateProject
+      summary: Update project settings.
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdate'
+      responses:
+        '200':
+          description: Updated project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /projects/{project_id}/keys:
+    post:
+      tags: [capture]
+      operationId: createApiKey
+      summary: Create a scoped API key. The secret is returned once.
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyCreate'
+      responses:
+        '201':
+          description: API key created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyCreated'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /projects/{project_id}/keys/{key_id}:
+    delete:
+      tags: [capture]
+      operationId: revokeApiKey
+      summary: Revoke an API key. Idempotent; revoking twice returns 204.
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/KeyId'
+      responses:
+        '204':
+          description: Key revoked.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /projects/{project_id}/runs:
+    post:
+      tags: [capture]
+      operationId: createRun
+      summary: Open a run for capture.
+      security:
+        - bearerAuth: [capture:write]
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunCreate'
+      responses:
+        '201':
+          description: Run created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /runs:
+    get:
+      tags: [capture]
+      operationId: listRuns
+      summary: List runs, newest first, with stable opaque cursors.
+      security:
+        - bearerAuth: [runs:read]
+      parameters:
+        - name: project_id
+          in: query
+          schema:
+            $ref: '#/components/schemas/Uuid'
+        - name: execution_state
+          in: query
+          schema:
+            $ref: '#/components/schemas/ExecutionState'
+        - name: capture_state
+          in: query
+          schema:
+            $ref: '#/components/schemas/CaptureState'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of runs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /runs/{run_id}:
+    get:
+      tags: [capture]
+      operationId: getRun
+      summary: Get a run with capture/execution state.
+      security:
+        - bearerAuth: [runs:read]
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: The run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /runs/{run_id}/events:batch:
+    post:
+      tags: [capture]
+      operationId: ingestEventBatch
+      summary: |
+        Ingest an event batch atomically. Events are idempotent by event
+        identity plus content hash: a duplicate retry with identical events
+        succeeds without re-inserting; any conflicting event identity or
+        sequence returns `409` and no partial insertion occurs. Batches are
+        bounded (4 MiB or 500 events) and each event is bounded (256 KiB);
+        larger payloads return `413`.
+      security:
+        - bearerAuth: [capture:write]
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventBatch'
+      responses:
+        '200':
+          description: Batch accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventBatchResult'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /runs/{run_id}/events:
+    get:
+      tags: [capture]
+      operationId: listRunEvents
+      summary: List stored events of a run in causal projection order.
+      security:
+        - bearerAuth: [runs:read]
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - name: stream_id
+          in: query
+          schema:
+            $ref: '#/components/schemas/Uuid'
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/EventType'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of events.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /runs/{run_id}/artifacts:
+    post:
+      tags: [capture]
+      operationId: uploadArtifact
+      summary: Upload a bounded artifact (8 MiB max) for a run.
+      security:
+        - bearerAuth: [capture:write]
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArtifactCreate'
+      responses:
+        '201':
+          description: Artifact stored with its SHA-256 hash.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artifact'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /runs/{run_id}:seal:
+    post:
+      tags: [capture]
+      operationId: sealRun
+      summary: |
+        Seal a run: validate causal parents and stream terminals, then
+        freeze an immutable recording manifest. Sealing is asynchronous and
+        returns a job; a sealed run rejects further ingestion with `409`.
+      security:
+        - bearerAuth: [capture:write]
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /runs/{run_id}/watch:
+    get:
+      tags: [capture]
+      operationId: watchRun
+      summary: |
+        Server-sent events stream of run updates. Reconnect with
+        `Last-Event-ID` to resume; event identities are preserved.
+      security:
+        - bearerAuth: [runs:read]
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: SSE stream of run events.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  SSE frames. `event` is the capture event type, `id` is the
+                  event ID (usable as `Last-Event-ID` on reconnect) and
+                  `data` is the JSON `Event`.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+  /recordings/{recording_id}:
+    get:
+      tags: [playback]
+      operationId: getRecording
+      summary: Get a recording manifest. Read-only; never executes anything.
+      security:
+        - bearerAuth: [runs:read]
+      parameters:
+        - $ref: '#/components/parameters/RecordingId'
+      responses:
+        '200':
+          description: Recording manifest.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recording'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /recordings/{recording_id}/projection:
+    get:
+      tags: [playback]
+      operationId: getRecordingProjection
+      summary: |
+        Deterministic projection of an immutable recording under a pinned
+        projection version. Purely read-only: it never schedules execution,
+        never calls models or tools, and yields the same canonical hash for
+        the same (recording, projection_version) pair.
+      security:
+        - bearerAuth: [runs:read]
+      parameters:
+        - $ref: '#/components/parameters/RecordingId'
+        - name: projection_version
+          in: query
+          schema:
+            type: string
+            pattern: '^[0-9]+$'
+            default: '1'
+        - name: before_event_id
+          in: query
+          description: Project only events up to (excluding) this event.
+          schema:
+            $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          description: Projected state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Projection'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /recordings/{recording_id}/exports:
+    post:
+      tags: [playback]
+      operationId: exportRecording
+      summary: |
+        Export a redacted, portable `.anvil` archive of a recording.
+        Asynchronous; the job result references the downloadable artifact.
+      security:
+        - bearerAuth: [runs:read]
+      parameters:
+        - $ref: '#/components/parameters/RecordingId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /projects/{project_id}/imports:
+    post:
+      tags: [playback]
+      operationId: importRecording
+      summary: |
+        Import a portable `.anvil` archive. Archives are untrusted data:
+        parsing is strict, schema-manifested and hash-checked; traversal,
+        bombs, oversized and tampered archives are rejected.
+      security:
+        - bearerAuth: [replay:write]
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /projects/{project_id}/agent-versions:
+    post:
+      tags: [replay]
+      operationId: registerAgentVersion
+      summary: |
+        Register an agent version: an OCI image reference pinned by digest,
+        an entrypoint and an adapter. Mutable image tags are rejected.
+      security:
+        - bearerAuth: [replay:write]
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentVersionCreate'
+      responses:
+        '201':
+          description: Agent version registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentVersion'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /reexecutions:
+    post:
+      tags: [replay]
+      operationId: createReexecution
+      summary: |
+        Request a re-execution of an immutable recording with a registered
+        agent version. The runner has no network, original credentials,
+        host mounts or Docker socket. Original tools never run: tool and
+        model calls are satisfied from checked fixtures, optionally mutated
+        by a validated fault plan. `model_mode: live` additionally requires
+        an approved provider profile with server-managed credentials.
+      security:
+        - bearerAuth: [replay:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReexecutionRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /reexecutions/{reexecution_id}:
+    get:
+      tags: [replay]
+      operationId: getReexecution
+      summary: Get a re-execution request, status and result manifest.
+      security:
+        - bearerAuth: [runs:read]
+      parameters:
+        - $ref: '#/components/parameters/ReexecutionId'
+      responses:
+        '200':
+          description: Re-execution with status and manifest.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reexecution'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /jobs/{job_id}:
+    get:
+      tags: [jobs]
+      operationId: getJob
+      summary: Get a job's state, progress and outcome.
+      security:
+        - bearerAuth: [runs:read]
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Job state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /jobs/{job_id}:cancel:
+    post:
+      tags: [jobs]
+      operationId: cancelJob
+      summary: |
+        Cancel a queued or running job. Cancellation is asynchronous and
+        idempotent: the job transitions to `cancelling` then `cancelled`
+        (runner termination target is 10 seconds); repeating cancel on a
+        cancelled job returns `200` with the job. Cancelling a finished job
+        returns `409`. The supervisor always reclaims runner resources
+        (container, sockets, fixtures) on cancellation.
+      security:
+        - bearerAuth: [replay:write]
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Cancellation accepted; job is cancelling/cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /comparisons:
+    post:
+      tags: [replay]
+      operationId: createComparison
+      summary: Compare a baseline recording with a candidate run. Asynchronous.
+      security:
+        - bearerAuth: [replay:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComparisonRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /comparisons/{comparison_id}:
+    get:
+      tags: [replay]
+      operationId: getComparison
+      summary: |
+        Get a comparison. Deterministic, judge and infrastructure statuses
+        are reported independently; incomplete evidence or ambiguous
+        alignment can never pass.
+      security:
+        - bearerAuth: [runs:read]
+      parameters:
+        - $ref: '#/components/parameters/ComparisonId'
+      responses:
+        '200':
+          description: Comparison report summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comparison'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /comparisons/{comparison_id}/divergences:
+    get:
+      tags: [replay]
+      operationId: listDivergences
+      summary: Paginated divergence findings of a comparison.
+      security:
+        - bearerAuth: [runs:read]
+      parameters:
+        - $ref: '#/components/parameters/ComparisonId'
+        - name: category
+          in: query
+          schema:
+            $ref: '#/components/schemas/DivergenceCategory'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of divergences.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DivergencePage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /projects/{project_id}/suites:
+    post:
+      tags: [suites]
+      operationId: createSuite
+      summary: Create a regression suite.
+      security:
+        - bearerAuth: [suites:write]
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuiteCreate'
+      responses:
+        '201':
+          description: Suite created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Suite'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /suites/{suite_id}/versions:
+    post:
+      tags: [suites]
+      operationId: createSuiteVersion
+      summary: |
+        Compile an immutable suite version from a strict
+        `anvil.dev/v1alpha1` `RegressionSuite` YAML document. Duplicate
+        keys, unknown fields, executable expressions, network fixture URLs,
+        unsafe aliases, out-of-directory paths and mutable image tags are
+        rejected with `400`.
+      security:
+        - bearerAuth: [suites:write]
+      parameters:
+        - $ref: '#/components/parameters/SuiteId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuiteVersionCreate'
+      responses:
+        '201':
+          description: Immutable compiled suite version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuiteVersion'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /suite-runs:
+    post:
+      tags: [suites]
+      operationId: createSuiteRun
+      summary: |
+        Run an immutable suite version. Cases use recorded responses or
+        stub providers; live models are never required CI oracles.
+      security:
+        - bearerAuth: [suites:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuiteRunCreate'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /suite-runs/{suite_run_id}:
+    get:
+      tags: [suites]
+      operationId: getSuiteRun
+      summary: Get suite run status and per-case outcomes.
+      security:
+        - bearerAuth: [suites:read]
+      parameters:
+        - $ref: '#/components/parameters/SuiteRunId'
+      responses:
+        '200':
+          description: Suite run with case results.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuiteRun'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /suite-runs/{suite_run_id}/report:
+    get:
+      tags: [suites]
+      operationId: getSuiteRunReport
+      summary: Render a suite run report as JSON, JUnit XML or Markdown.
+      security:
+        - bearerAuth: [suites:read]
+      parameters:
+        - $ref: '#/components/parameters/SuiteRunId'
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, junit, markdown]
+            default: json
+      responses:
+        '200':
+          description: Suite run report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuiteRunReport'
+            application/xml:
+              schema:
+                type: string
+            text/markdown:
+              schema:
+                type: string
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /projects/{project_id}/deletions:
+    post:
+      tags: [admin]
+      operationId: requestDeletion
+      summary: |
+        Request deletion of a run, recording or suite and its derived
+        artifacts. Deletion is an audited asynchronous job.
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeletionRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /deletions/{deletion_id}:
+    get:
+      tags: [admin]
+      operationId: getDeletion
+      summary: Get deletion request status and audit evidence reference.
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - $ref: '#/components/parameters/DeletionId'
+      responses:
+        '200':
+          description: Deletion request state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deletion'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+  /health/live:
+    get:
+      tags: [health]
+      operationId: liveness
+      summary: Liveness probe. No authentication.
+      security: []
+      responses:
+        '200':
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /health/ready:
+    get:
+      tags: [health]
+      operationId: readiness
+      summary: Readiness probe (storage reachable, migrations applied).
+      security: []
+      responses:
+        '200':
+          description: Ready to serve.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: Not ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /metrics:
+    get:
+      tags: [health]
+      operationId: metrics
+      summary: Prometheus metrics. Operator scope required.
+      security:
+        - bearerAuth: [metrics:read]
+      responses:
+        '200':
+          description: Prometheus text exposition format.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/Throttled' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+      description: |
+        Scoped API key. Scopes: `capture:write`, `runs:read`,
+        `replay:write`, `suites:write`, `suites:read`, `admin`,
+        `metrics:read`. Capture keys can write capture data only and are
+        denied read and replay permissions.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Unique client-generated key (UUIDv7 recommended). Retrying with the
+        same key and an identical payload returns the original response;
+        reusing the key with a different payload returns `409`.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+        pattern: '^[A-Za-z0-9_-]+$'
+    Cursor:
+      name: cursor
+      in: query
+      description: Stable opaque pagination cursor from a prior response.
+      schema:
+        type: string
+        maxLength: 512
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    KeyId:
+      name: key_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    RunId:
+      name: run_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    RecordingId:
+      name: recording_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    ReexecutionId:
+      name: reexecution_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    ComparisonId:
+      name: comparison_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    SuiteId:
+      name: suite_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    SuiteRunId:
+      name: suite_run_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    DeletionId:
+      name: deletion_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+
+  responses:
+    BadRequest:
+      description: Invalid request (unknown field, bad type, invalid enum).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://anvil.dev/problems/invalid-request
+            title: Invalid request
+            status: 400
+            detail: 'messages[0].role: unknown value "root"'
+            code: invalid_request
+            request_id: 018f3c4a-9c6b-7c2e-9f5a-2d1f0b9a8c7d
+    Unauthorized:
+      description: Missing or invalid API key.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Authenticated but missing the required scope.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://anvil.dev/problems/forbidden
+            title: Forbidden
+            status: 403
+            detail: Scope replay:write is required for this operation.
+            code: forbidden
+            request_id: 018f3c4a-9c6b-7c2e-9f5a-2d1f0b9a8c7d
+    NotFound:
+      description: Resource does not exist in the caller's scope.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: |
+        Conflict: duplicate idempotency key with a different payload,
+        conflicting event identity or sequence (no partial insertion), or
+        an invalid state transition (e.g. ingesting into a sealed run,
+        cancelling a finished job).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://anvil.dev/problems/conflict
+            title: Conflict
+            status: 409
+            detail: Event 018f3c4a-... conflicts with stored content hash.
+            code: conflict
+            request_id: 018f3c4a-9c6b-7c2e-9f5a-2d1f0b9a8c7d
+    TooLarge:
+      description: Payload exceeds the documented bound.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://anvil.dev/problems/payload-too-large
+            title: Payload too large
+            status: 413
+            detail: Event batch exceeds 4 MiB limit.
+            code: payload_too_large
+            request_id: 018f3c4a-9c6b-7c2e-9f5a-2d1f0b9a8c7d
+    Throttled:
+      description: Rate limited. Retry after the `Retry-After` delay.
+      headers:
+        Retry-After:
+          required: true
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+            minimum: 0
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://anvil.dev/problems/throttled
+            title: Too many requests
+            status: 429
+            detail: Ingestion quota exceeded; retry later.
+            code: throttled
+            request_id: 018f3c4a-9c6b-7c2e-9f5a-2d1f0b9a8c7d
+    AcceptedJob:
+      description: |
+        Accepted for asynchronous processing. Poll `job_url` (or
+        `GET /jobs/{id}`) until the job reaches a terminal state; cancel it
+        with `POST /jobs/{id}:cancel`.
+      headers:
+        Location:
+          description: URL of the created job.
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/JobAccepted'
+
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+      description: UUIDv7 identifier.
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    Sha256:
+      type: string
+      pattern: '^sha256:[0-9a-f]{64}$'
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, code, request_id]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        code:
+          type: string
+          description: Stable machine-readable error code.
+          enum:
+            - invalid_request
+            - unauthenticated
+            - forbidden
+            - not_found
+            - conflict
+            - payload_too_large
+            - throttled
+            - cancelled
+            - infrastructure_error
+            - internal
+        request_id:
+          type: string
+          description: Server-generated request correlation ID.
+    JobAccepted:
+      type: object
+      additionalProperties: false
+      required: [job_id, job_url, status]
+      properties:
+        job_id:
+          $ref: '#/components/schemas/Uuid'
+        job_url:
+          type: string
+        status:
+          $ref: '#/components/schemas/JobStatus'
+
+    Project:
+      type: object
+      additionalProperties: false
+      required: [id, name, retention_days, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        retention_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+          default: 30
+        created_at:
+          type: string
+          format: date-time
+    ProjectCreate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        retention_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+    ProjectUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        retention_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+    ProjectPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        next_cursor:
+          type: string
+          nullable: true
+
+    ApiScope:
+      type: string
+      enum:
+        - capture:write
+        - runs:read
+        - replay:write
+        - suites:write
+        - suites:read
+        - admin
+        - metrics:read
+    ApiKeyCreate:
+      type: object
+      additionalProperties: false
+      required: [name, scopes]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        scopes:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ApiScope'
+        expires_at:
+          type: string
+          format: date-time
+    ApiKeyCreated:
+      type: object
+      additionalProperties: false
+      required: [id, name, scopes, secret, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiScope'
+        secret:
+          type: string
+          description: Presented exactly once; only a hash is stored.
+        created_at:
+          type: string
+          format: date-time
+
+    CaptureState:
+      type: string
+      enum: [open, sealing, sealed_complete, sealed_incomplete]
+    ExecutionState:
+      type: string
+      enum: [running, succeeded, failed, cancelled, unknown]
+    Run:
+      type: object
+      additionalProperties: false
+      required: [id, project_id, capture_state, execution_state, agent_name, adapter, adapter_version, started_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        project_id: { $ref: '#/components/schemas/Uuid' }
+        capture_state:
+          $ref: '#/components/schemas/CaptureState'
+        execution_state:
+          $ref: '#/components/schemas/ExecutionState'
+        agent_name:
+          type: string
+          maxLength: 256
+        adapter:
+          type: string
+          maxLength: 64
+        adapter_version:
+          type: string
+          maxLength: 64
+        trace_id:
+          type: string
+          pattern: '^[0-9a-f]{32}$'
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          nullable: true
+          format: date-time
+    RunCreate:
+      type: object
+      additionalProperties: false
+      required: [agent_name, adapter, adapter_version]
+      properties:
+        agent_name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        adapter:
+          type: string
+          maxLength: 64
+        adapter_version:
+          type: string
+          maxLength: 64
+        trace_id:
+          type: string
+          pattern: '^[0-9a-f]{32}$'
+        started_at:
+          type: string
+          format: date-time
+    RunPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Run'
+        next_cursor:
+          type: string
+          nullable: true
+
+    EventType:
+      type: string
+      enum:
+        - run.started
+        - run.completed
+        - run.failed
+        - message.created
+        - model.requested
+        - model.chunk
+        - model.completed
+        - model.failed
+        - tool.requested
+        - tool.completed
+        - tool.failed
+        - state.checkpoint
+        - capture.gap
+        - fault.applied
+    Event:
+      type: object
+      additionalProperties: false
+      required: [schema_version, event_id, run_id, stream_id, sequence, type, occurred_at, payload]
+      properties:
+        schema_version:
+          type: string
+          enum: ['1']
+        event_id:
+          $ref: '#/components/schemas/Uuid'
+        run_id:
+          $ref: '#/components/schemas/Uuid'
+        stream_id:
+          $ref: '#/components/schemas/Uuid'
+        sequence:
+          type: integer
+          minimum: 0
+          description: Per-stream sequence; there is no global order.
+        type:
+          $ref: '#/components/schemas/EventType'
+        occurred_at:
+          type: string
+          format: date-time
+          description: Wall clock of capture; never a deterministic order.
+        trace_id:
+          type: string
+          pattern: '^[0-9a-f]{32}$'
+        span_id:
+          type: string
+          pattern: '^[0-9a-f]{16}$'
+        parent_event_ids:
+          type: array
+          items:
+            $ref: '#/components/schemas/Uuid'
+        invocation_id:
+          $ref: '#/components/schemas/Uuid'
+        payload:
+          type: object
+          description: |
+            Canonical JSON event payload, max 256 KiB serialized.
+            `replay_safe: false` marks payloads whose redactions removed
+            replay-critical evidence.
+    EventBatch:
+      type: object
+      additionalProperties: false
+      required: [events]
+      properties:
+        events:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/Event'
+    EventBatchResult:
+      type: object
+      additionalProperties: false
+      required: [accepted, duplicates]
+      properties:
+        accepted:
+          type: integer
+          minimum: 0
+        duplicates:
+          type: integer
+          minimum: 0
+          description: Identical retries acknowledged without re-insertion.
+    EventPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+        next_cursor:
+          type: string
+          nullable: true
+
+    Artifact:
+      type: object
+      additionalProperties: false
+      required: [id, run_id, name, content_type, size_bytes, sha256, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        run_id: { $ref: '#/components/schemas/Uuid' }
+        name:
+          type: string
+          maxLength: 256
+        content_type:
+          type: string
+          maxLength: 128
+        size_bytes:
+          type: integer
+          minimum: 0
+        sha256:
+          $ref: '#/components/schemas/Sha256'
+        created_at:
+          type: string
+          format: date-time
+    ArtifactCreate:
+      type: object
+      additionalProperties: false
+      required: [name, content_type, content_base64]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        content_type:
+          type: string
+          maxLength: 128
+        content_base64:
+          type: string
+          format: byte
+          description: At most 8 MiB after decoding.
+
+    Recording:
+      type: object
+      additionalProperties: false
+      required: [id, run_id, project_id, capture_state, manifest_hash, event_count, sealed_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        run_id: { $ref: '#/components/schemas/Uuid' }
+        project_id: { $ref: '#/components/schemas/Uuid' }
+        capture_state:
+          $ref: '#/components/schemas/CaptureState'
+        manifest_hash:
+          $ref: '#/components/schemas/Sha256'
+        event_count:
+          type: integer
+          minimum: 0
+        sealed_at:
+          type: string
+          format: date-time
+    Projection:
+      type: object
+      additionalProperties: false
+      required: [recording_id, projection_version, canonical_hash, state]
+      properties:
+        recording_id:
+          $ref: '#/components/schemas/Uuid'
+        projection_version:
+          type: string
+        canonical_hash:
+          $ref: '#/components/schemas/Sha256'
+        state:
+          type: object
+          description: Projected read-only run state.
+    ExportRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        include_artifacts:
+          type: boolean
+          default: true
+        redaction_profile:
+          type: string
+          maxLength: 128
+    ImportRequest:
+      type: object
+      additionalProperties: false
+      required: [archive_base64]
+      properties:
+        archive_base64:
+          type: string
+          format: byte
+          description: Portable .anvil archive with schema manifest.
+
+    OciDigest:
+      type: string
+      description: Digest-pinned OCI reference; mutable tags are rejected.
+      pattern: '^[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}$'
+    AgentVersion:
+      type: object
+      additionalProperties: false
+      required: [id, project_id, image, entrypoint, adapter, adapter_version, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        project_id: { $ref: '#/components/schemas/Uuid' }
+        image:
+          $ref: '#/components/schemas/OciDigest'
+        entrypoint:
+          type: string
+          maxLength: 512
+        adapter:
+          type: string
+          maxLength: 64
+        adapter_version:
+          type: string
+          maxLength: 64
+        created_at:
+          type: string
+          format: date-time
+    AgentVersionCreate:
+      type: object
+      additionalProperties: false
+      required: [image, entrypoint, adapter, adapter_version]
+      properties:
+        image:
+          $ref: '#/components/schemas/OciDigest'
+        entrypoint:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: |
+            Fixed entrypoint inside the pinned image, not an arbitrary
+            host command.
+        adapter:
+          type: string
+          maxLength: 64
+        adapter_version:
+          type: string
+          maxLength: 64
+    ModelMode:
+      type: string
+      enum: [recorded, live]
+    FixtureMatchingPolicy:
+      type: string
+      description: |
+        Strict matching requires logical invocation path, tool name/schema
+        digest, canonical arguments and consumption state; unmatched or
+        ambiguous invocations fail closed.
+      enum: [strict]
+    Budgets:
+      type: object
+      additionalProperties: false
+      properties:
+        wall_time_seconds:
+          type: integer
+          minimum: 1
+          default: 120
+        max_model_calls:
+          type: integer
+          minimum: 0
+          default: 20
+        max_tool_calls:
+          type: integer
+          minimum: 0
+          default: 100
+        max_input_tokens:
+          type: integer
+          minimum: 0
+          default: 20000
+        max_output_tokens:
+          type: integer
+          minimum: 0
+          default: 10000
+        max_spend_micro_usd:
+          type: integer
+          minimum: 0
+          description: USD 1.00 default = 1000000.
+          default: 1000000
+    FaultPlanRef:
+      type: object
+      additionalProperties: false
+      required: [version, hash]
+      properties:
+        version:
+          type: string
+        hash:
+          $ref: '#/components/schemas/Sha256'
+    ReexecutionRequest:
+      type: object
+      additionalProperties: false
+      required: [recording_id, agent_version_id, model_mode, fixture_matching, initial_state]
+      properties:
+        recording_id:
+          $ref: '#/components/schemas/Uuid'
+        agent_version_id:
+          $ref: '#/components/schemas/Uuid'
+        model_mode:
+          $ref: '#/components/schemas/ModelMode'
+        fixture_matching:
+          $ref: '#/components/schemas/FixtureMatchingPolicy'
+        initial_state:
+          type: object
+          description: Explicit initial agent state (JSON only).
+        seed:
+          type: integer
+          format: int64
+        fault_plan:
+          $ref: '#/components/schemas/FaultPlanRef'
+        budgets:
+          $ref: '#/components/schemas/Budgets'
+        provider_profile_id:
+          $ref: '#/components/schemas/Uuid'
+    Reexecution:
+      type: object
+      additionalProperties: false
+      required: [id, request, status, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        request:
+          $ref: '#/components/schemas/ReexecutionRequest'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        job_id: { $ref: '#/components/schemas/Uuid' }
+        candidate_run_id:
+          type: string
+          nullable: true
+          format: uuid
+        manifest:
+          $ref: '#/components/schemas/ReexecutionManifest'
+        created_at:
+          type: string
+          format: date-time
+    ReexecutionManifest:
+      type: object
+      additionalProperties: false
+      required: [image, adapter, adapter_version, model_mode, fixtures_hash]
+      properties:
+        image:
+          $ref: '#/components/schemas/OciDigest'
+        adapter:
+          type: string
+        adapter_version:
+          type: string
+        model_mode:
+          $ref: '#/components/schemas/ModelMode'
+        fixtures_hash:
+          $ref: '#/components/schemas/Sha256'
+        fault_plan:
+          $ref: '#/components/schemas/FaultPlanRef'
+        budgets:
+          $ref: '#/components/schemas/Budgets'
+
+    JobStatus:
+      type: string
+      enum: [queued, running, cancelling, cancelled, succeeded, failed]
+    JobKind:
+      type: string
+      enum: [seal, export, import, reexecution, comparison, suite_run, deletion]
+    Job:
+      type: object
+      additionalProperties: false
+      required: [id, kind, status, attempts, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        kind:
+          $ref: '#/components/schemas/JobKind'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        attempts:
+          type: integer
+          minimum: 0
+        error:
+          type: string
+          nullable: true
+          description: Redacted failure detail, if failed.
+        result_url:
+          type: string
+          nullable: true
+          description: Resource produced by the job, when succeeded.
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          nullable: true
+          format: date-time
+
+    DeterministicStatus:
+      type: string
+      enum: [pass, fail, inconclusive]
+    JudgeStatus:
+      type: string
+      enum: [pass, fail, inconclusive, not_run]
+    InfrastructureStatus:
+      type: string
+      enum: [ok, error, cancelled, timed_out]
+    AlignmentConfidence:
+      type: string
+      enum: [exact, partial, ambiguous]
+    ComparisonRequest:
+      type: object
+      additionalProperties: false
+      required: [baseline_recording_id, candidate_run_id]
+      properties:
+        baseline_recording_id:
+          $ref: '#/components/schemas/Uuid'
+        candidate_run_id:
+          $ref: '#/components/schemas/Uuid'
+        judge:
+          type: string
+          description: Opt-in judge profile; judges are off by default and
+            can never override deterministic or infrastructure failures.
+    Comparison:
+      type: object
+      additionalProperties: false
+      required: [id, status, deterministic, judge, infrastructure, alignment_confidence]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        deterministic:
+          $ref: '#/components/schemas/DeterministicStatus'
+        judge:
+          $ref: '#/components/schemas/JudgeStatus'
+        infrastructure:
+          $ref: '#/components/schemas/InfrastructureStatus'
+        alignment_confidence:
+          $ref: '#/components/schemas/AlignmentConfidence'
+    DivergenceCategory:
+      type: string
+      enum:
+        - changed_input
+        - changed_prompt
+        - changed_tool_name
+        - changed_tool_args
+        - missing_tool_call
+        - extra_tool_call
+        - control_flow
+        - changed_output
+        - error_difference
+        - budget_exceeded
+        - capture_gap
+    Divergence:
+      type: object
+      additionalProperties: false
+      required: [id, category, summary, evidence_event_ids]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        category:
+          $ref: '#/components/schemas/DivergenceCategory'
+        summary:
+          type: string
+        evidence_event_ids:
+          type: array
+          items:
+            $ref: '#/components/schemas/Uuid'
+    DivergencePage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Divergence'
+        next_cursor:
+          type: string
+          nullable: true
+
+    Suite:
+      type: object
+      additionalProperties: false
+      required: [id, project_id, name, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        project_id: { $ref: '#/components/schemas/Uuid' }
+        name:
+          type: string
+          maxLength: 128
+        created_at:
+          type: string
+          format: date-time
+    SuiteCreate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+    SuiteVersionCreate:
+      type: object
+      additionalProperties: false
+      required: [yaml]
+      properties:
+        yaml:
+          type: string
+          description: |
+            `apiVersion: anvil.dev/v1alpha1`, `kind: RegressionSuite`
+            document, parsed strictly.
+    SuiteVersion:
+      type: object
+      additionalProperties: false
+      required: [id, suite_id, version, hash, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        suite_id: { $ref: '#/components/schemas/Uuid' }
+        version:
+          type: integer
+          minimum: 1
+        hash:
+          $ref: '#/components/schemas/Sha256'
+        created_at:
+          type: string
+          format: date-time
+    SuiteRunCreate:
+      type: object
+      additionalProperties: false
+      required: [suite_version_id]
+      properties:
+        suite_version_id:
+          $ref: '#/components/schemas/Uuid'
+    CaseStatus:
+      type: string
+      enum: [pass, fail, inconclusive, cancelled, error]
+    CaseResult:
+      type: object
+      additionalProperties: false
+      required: [name, status]
+      properties:
+        name:
+          type: string
+        status:
+          $ref: '#/components/schemas/CaseStatus'
+        reexecution_id:
+          $ref: '#/components/schemas/Uuid'
+        comparison_id:
+          $ref: '#/components/schemas/Uuid'
+        detail:
+          type: string
+    SuiteRun:
+      type: object
+      additionalProperties: false
+      required: [id, suite_version_id, status, cases, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        suite_version_id: { $ref: '#/components/schemas/Uuid' }
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        job_id: { $ref: '#/components/schemas/Uuid' }
+        cases:
+          type: array
+          items:
+            $ref: '#/components/schemas/CaseResult'
+        created_at:
+          type: string
+          format: date-time
+    SuiteRunReport:
+      type: object
+      additionalProperties: false
+      required: [suite_run_id, format, content, artifact_refs]
+      properties:
+        suite_run_id:
+          $ref: '#/components/schemas/Uuid'
+        format:
+          type: string
+          enum: [json, junit, markdown]
+        content:
+          type: string
+        artifact_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/Uuid'
+
+    DeletionTargetKind:
+      type: string
+      enum: [run, recording, suite]
+    DeletionRequest:
+      type: object
+      additionalProperties: false
+      required: [target_kind, target_id]
+      properties:
+        target_kind:
+          $ref: '#/components/schemas/DeletionTargetKind'
+        target_id:
+          $ref: '#/components/schemas/Uuid'
+    Deletion:
+      type: object
+      additionalProperties: false
+      required: [id, project_id, target_kind, target_id, status, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        project_id: { $ref: '#/components/schemas/Uuid' }
+        target_kind:
+          $ref: '#/components/schemas/DeletionTargetKind'
+        target_id:
+          $ref: '#/components/schemas/Uuid'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        audit_event_id:
+          $ref: '#/components/schemas/Uuid'
+        created_at:
+          type: string
+          format: date-time
+
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]

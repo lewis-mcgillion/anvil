@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "artifact_id": "0190a8b0-7000-7a00-8000-000000000201",
+  "run_id": "0190a8b0-7000-7a00-8000-000000000001",
+  "name": "screenshot.png",
+  "content_type": "image/png",
+  "size_bytes": 102400,
+  "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+  "created_at": "2026-01-01T12:00:03.000Z"
+}

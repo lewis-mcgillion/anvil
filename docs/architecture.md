@@ -20,7 +20,7 @@ Any unmatched or ambiguous tool invocation fails closed. No execution mode silen
 
 ## Stack, layout and dependencies
 
-- Go API and worker in a modular monolith. REST is specified by `api/openapi.yaml`; internal runner messages use versioned protobuf over Unix domain sockets.
+- Go API and worker in a modular monolith. REST is specified by `api/openapi.yaml`; internal runner messages use versioned protobuf over Unix domain sockets (`proto/anvil/runner/v1/runner.proto`). Contract semantics (errors, scopes, retries, idempotency, cancellation) live in [docs/api-contract.md](api-contract.md); evolution rules live in [docs/compatibility.md](compatibility.md).
 - PostgreSQL for authoritative metadata, immutable event payloads (JSONB), artifacts, suites, job leases and audit events. No Redis or dedicated object storage for MVP.
 - Python capture SDK with Google ADK hooks as the first supported integration. OpenTelemetry trace/span IDs correlate capture to existing tracing. LangGraph follows after release.
 - React and TypeScript with generated API bindings, accessible components and virtualized timeline rendering.
@@ -54,9 +54,30 @@ All project-owned rows require a project scope. Application authorization and Po
 
 Event types: `run.started`, `run.completed`, `run.failed`, `message.created`, `model.requested`, `model.chunk`, `model.completed`, `model.failed`, `tool.requested`, `tool.completed`, `tool.failed`, `state.checkpoint`, `capture.gap`, `fault.applied`.
 
-Events are idempotent by event identity plus content hash; conflicting identities/sequences return HTTP 409 without partial insertion. Sequences are per stream, not a fictitious total global order. Causal parents may arrive later; sealing validates them. Capture completeness (`open`, `sealing`, `sealed_complete`, `sealed_incomplete`) differs from execution outcome (`running`, `succeeded`, `failed`, `cancelled`, `unknown`).
+Events are idempotent by event identity plus content hash; conflicting identities/sequences return HTTP 409 without partial insertion. Sequences are per stream, not a fictitious total global order. Causal parents may arrive later; sealing validates them. Capture completeness (`open`, `sealing`, `sealed_complete`, `sealed_incomplete`) differs from execution outcome (`running`, `succeeded`, `failed`, `cancelled`, `unknown`). Sealing is fail-closed unless incomplete evidence is explicitly acknowledged; an immutable manifest records the canonical event hash, gaps, outcome and replay eligibility. A sealed run rejects late events and repeated sealing.
+
+The initial PostgreSQL migration is `migrations/0001_core.sql`. It is transactional and records
+its applied version in `schema_migrations`; upgrade tooling must apply numbered migrations in order
+and must not edit an applied migration. Event identity and `(stream_id, sequence)` are unique
+constraints, so a conflicting retry must be translated to `409 Conflict` and its transaction rolled
+back without partial insertion. Events and finalized recordings are immutable; attempted updates or
+deletes fail explicitly. A failed migration is rolled back by PostgreSQL and releases its transaction
+resources; callers must close their database session or return it to the pool.
 
 Defaults: max event 256 KiB, ingest batch 4 MiB or 500 events, artifact 8 MiB, run 64 MiB, SDK buffer 2000 events or 16 MiB, 30-day retention, list page 100 (max 1000). Failed capture must report gaps, never silently succeed. Artifacts and recordings carry SHA-256 hashes. No pickle or arbitrary object deserialization is accepted from recordings.
+
+### Portable recording bundles
+
+The version-1 `.anvil` format is a ZIP archive containing `manifest.json` and one
+`artifacts/<sha256>` entry per manifest artifact. The manifest records
+`schema_version`, a non-empty `recording_id`, and each artifact's name, media
+type, byte size, and SHA-256 digest. Export rejects mismatched metadata. Import
+treats the archive as untrusted: absolute paths, `..` traversal, duplicate or
+unexpected entries, unsupported schema versions, payloads over 8 MiB per
+artifact or 64 MiB per bundle, and digest mismatches fail explicitly. Import
+does not extract to disk and closes each ZIP entry after bounded reading.
+Cancellation is owned by the caller through the `io.Reader`/`io.Writer`;
+partial output must be discarded rather than treated as a valid bundle.
 
 ## Public API
 
@@ -85,7 +106,7 @@ Testing and operations:
 
 Re-execution requests reference immutable `recording_id`, `agent_version_id`, `model_mode` (`recorded` or `live`), fixture matching policy, explicit initial state, seed, fault plan and budgets. Default limits: 120-second wall time, 20 model calls, 100 tool calls, 20k input and 10k output tokens, and USD 1.00 estimated model spend. Live mode additionally requires an approved provider profile with server-managed credentials and endpoints.
 
-Internal runner protocol messages: `RunnerHello`, `EmitEvents`, `ModelRequest`, `ModelResponse`, `ToolRequest`, `ToolResponse`, `Heartbeat`, `RunnerFinished`. No arbitrary HTTP, filesystem, command execution or original-tool invocation primitive is exposed.
+Internal runner protocol messages: `RunnerHello`, `EmitEvents`, `ModelRequest`, `ModelResponse`, `ToolRequest`, `ToolResponse`, `Heartbeat`, `RunnerFinished`. No arbitrary HTTP, filesystem, command execution or original-tool invocation primitive is exposed. The wire contract is `proto/anvil/runner/v1/runner.proto`; `internal/contracts` tests reject any field that would introduce an execution surface.
 
 ## Replay, comparison and fault design
 
@@ -120,6 +141,10 @@ Exit codes: 0 gates passed, 1 assertion/judge gate failed, 2 invalid input, 3 in
 - Local installation binds to loopback. Self-hosted public access requires TLS, OIDC, scoped keys, CSP/CSRF/CORS and hardened deployment templates.
 - Treat traces, Markdown, imported archives, judge input and agent output as untrusted data. No agent-provided instructions can alter permissions or runner controls.
 - Audit reads, exports, executions and deletions without storing raw prompts in logs. Backups, data deletion, retention and policy changes are documented and tested.
+- Retention defaults to 30 days. Deleting a project resource traverses its
+  project-scoped derived-resource graph and records immutable deletion evidence;
+  active payload bytes are checked against project quotas. Backups have an
+  independent, documented expiry and are pruned explicitly.
 - Release gates include dependency review, SBOM, license policy, secret detection, signed artifacts and provenance.
 
 ## Testing and quality gates
@@ -158,3 +183,8 @@ Release acceptance: a clean checkout installs locally, captures a synthetic ADK 
 Root initiative is #1. Fourteen epic issues reference their six tasks each, and every task has explicit deliverable, acceptance checks and test obligations. Maintain published issue IDs `ANVIL-001` through `ANVIL-084` as stable references.
 
 Every task is complete only when its feature, negative paths, cancellation behavior where relevant, contract tests, documentation and security checks pass. A baseline update creates a new immutable recording and comparison, never overwrites existing evidence. Schema evolution requires explicit compatibility and migrations. No unresolved blocker may be concealed by a mock-only demo.
+
+Lifecycle compatibility: retention and deletion records are versioned by their
+resource identifiers and remain project-scoped. New derived resource kinds must
+declare their parent references before they can participate in deletion
+traversal; older clients continue to receive explicit errors for unknown kinds.

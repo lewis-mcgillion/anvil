@@ -1,0 +1,275 @@
+syntax = "proto3";
+
+// Anvil runner protocol, version v1.
+//
+// This is the only contract spoken between the supervisor (host) and the
+// agent runner over a Unix domain socket during recorded or live-model
+// re-execution. The protocol deliberately exposes no primitive for
+// arbitrary HTTP, filesystem, shell/command execution or invocation of
+// original (production) tools: model and tool traffic is funnelled through
+// typed request/response pairs that the supervisor satisfies from checked
+// fixtures or, for explicitly opted-in live mode, through the model broker.
+//
+// Semantics:
+//   - The runner speaks first with RunnerHello and waits for RunnerConfig.
+//   - The runner emits captured events with EmitEvents; EventAck is
+//     cumulative per stream (acked_through_sequence).
+//   - Every model call (ModelRequest) and tool call (ToolRequest) blocks
+//     the runner until the supervisor answers with the matching
+//     ModelResponse or ToolResponse, correlated by request_id.
+//   - The supervisor may answer any request with an Error, or cancel the
+//     run at any time with Cancel; the runner must then stop work and
+//     finish with RunnerFinished (CANCELLED, or FAILED if cleanup fails).
+//   - Heartbeat flows runner -> supervisor every heartbeat_interval.
+//     Missing two consecutive intervals lets the supervisor terminate the
+//     runner and release its job lease.
+//   - RunnerFinished is the last runner message; SupervisorFinished acks
+//     it, after which the supervisor closes the socket and reclaims the
+//     sandbox. Resource cleanup (container, sockets, fixtures) is always
+//     the supervisor's responsibility, including on timeout or cancel.
+//
+// Versioning: proto3 rules apply. Fields are only ever added with new
+// field numbers; numbers and names are never reused or renumbered
+// (enforced by `buf breaking` in CI). Unknown enum values must be treated
+// as UNSPECIFIED and must fail closed.
+package anvil.runner.v1;
+
+option go_package = "github.com/lewis-mcgillion/anvil/runner/gen";
+
+// Event is the wire copy of the versioned capture event schema
+// (schema/event.v1). payload is the canonical JSON event object.
+message Event {
+  string schema_version = 1;
+  string event_id = 2;
+  string run_id = 3;
+  string stream_id = 4;
+  uint64 sequence = 5;
+  string type = 6;
+  string occurred_at = 7;  // RFC 3339 with milliseconds, UTC.
+  string trace_id = 8;     // 32 lowercase hex chars, may be empty.
+  string span_id = 9;      // 16 lowercase hex chars, may be empty.
+  repeated string parent_event_ids = 10;
+  string invocation_id = 11;
+  bytes payload = 12;      // Canonical JSON event payload.
+}
+
+enum RunOutcome {
+  RUN_OUTCOME_UNSPECIFIED = 0;
+  RUN_OUTCOME_SUCCEEDED = 1;
+  RUN_OUTCOME_FAILED = 2;
+  RUN_OUTCOME_CANCELLED = 3;
+  RUN_OUTCOME_UNKNOWN = 4;
+}
+
+enum ModelMode {
+  MODEL_MODE_UNSPECIFIED = 0;
+  // Fixtures only. No provider traffic is permitted.
+  MODEL_MODE_RECORDED = 1;
+  // Fresh inference through the opt-in broker; original tools stay mocked.
+  MODEL_MODE_LIVE = 2;
+}
+
+// Error is a structured, typed failure. No stack traces or raw secrets.
+message Error {
+  string code = 1;      // UPPER_SNAKE machine code, e.g. TOOL_UNMATCHED.
+  string message = 2;   // Human-readable, redacted detail.
+  bool retryable = 3;   // True only for transient supervisor-side faults.
+}
+
+// Budgets bound a single re-execution attempt. Zero means "no limit" only
+// where the server-side default does not apply; the supervisor always
+// enforces the configured caps from the re-execution request.
+message Budgets {
+  uint32 wall_time_seconds = 1;
+  uint32 max_model_calls = 2;
+  uint32 max_tool_calls = 3;
+  uint32 max_input_tokens = 4;
+  uint32 max_output_tokens = 5;
+  uint64 max_spend_micro_usd = 6;
+}
+
+// HeartbeatConfig tells the runner how often to send Heartbeat.
+message HeartbeatConfig {
+  uint32 interval_seconds = 1;
+}
+
+// ModelMessage is one chat turn in canonical form.
+message ModelMessage {
+  string role = 1;       // system | user | assistant | tool
+  bytes content = 2;     // Canonical JSON content parts.
+}
+
+// ToolSchema describes one tool the agent may call, by name and schema
+// digest only. Schemas are supplied out of band in the fixtures manifest;
+// the runner can never register a tool the recording did not contain.
+message ToolSchema {
+  string name = 1;
+  string schema_digest = 2;  // sha256:<64 hex> of canonical tool schema.
+}
+
+// GenerationConfig mirrors the recorded model generation settings.
+message GenerationConfig {
+  double temperature = 1;
+  double top_p = 2;
+  uint32 max_output_tokens = 3;
+}
+
+// ToolFault is a typed, fixture-declared failure. Faults never invoke an
+// original tool; they only shape the synthetic ToolResponse.
+message ToolFault {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_EXCEPTION = 1;        // Typed tool exception.
+    KIND_TIMEOUT = 2;          // No result before the tool deadline.
+    KIND_EMPTY = 3;            // Empty result payload.
+    KIND_MALFORMED = 4;        // Result fails the declared schema.
+    KIND_PROVIDER_FAILURE = 5; // Upstream/provider-style failure.
+  }
+  Kind kind = 1;
+  string detail = 2;
+}
+
+// ---- Runner -> Supervisor ------------------------------------------------
+
+// RunnerHello is the first message on the socket.
+message RunnerHello {
+  string protocol_version = 1;  // Must be "1"; mismatch is fatal.
+  string runner_version = 2;
+  string adapter = 3;           // e.g. "google-adk".
+  string adapter_version = 4;
+}
+
+// EmitEvents carries a batch of captured events for one stream.
+message EmitEvents {
+  string run_id = 1;
+  string stream_id = 2;
+  repeated Event events = 3;    // Ordered by sequence within the batch.
+}
+
+// ModelRequest asks the supervisor for a model completion. In recorded
+// mode the supervisor answers from an exact canonical fixture match; any
+// mismatch fails closed with a MODEL_UNMATCHED Error. In live mode the
+// request is forwarded to the broker under the run's provider profile.
+message ModelRequest {
+  string request_id = 1;       // UUIDv7, unique per run.
+  string invocation_id = 2;    // Logical invocation path identity.
+  string model = 3;
+  repeated ModelMessage messages = 4;
+  repeated ToolSchema tools = 5;
+  string system_instruction = 6;
+  GenerationConfig generation = 7;
+}
+
+// ToolRequest asks the supervisor to resolve a tool call. This is NOT a
+// command execution primitive: arguments are opaque canonical JSON that is
+// only ever matched against recorded fixtures (or fault-mutated copies).
+message ToolRequest {
+  string request_id = 1;
+  string invocation_id = 2;
+  string tool_name = 3;
+  string schema_digest = 4;
+  bytes arguments = 5;  // Canonical JSON arguments.
+}
+
+// Heartbeat reports liveness and progress counters.
+message Heartbeat {
+  uint64 elapsed_ms = 1;
+  uint32 model_calls = 2;
+  uint32 tool_calls = 3;
+}
+
+// RunnerFinished is the terminal runner message.
+message RunnerFinished {
+  RunOutcome outcome = 1;
+  Error error = 2;  // Set when outcome is FAILED or CANCELLED-by-fault.
+}
+
+// ---- Supervisor -> Runner ------------------------------------------------
+
+// RunnerConfig answers RunnerHello.
+message RunnerConfig {
+  string run_id = 1;
+  string attempt_id = 2;
+  ModelMode model_mode = 3;
+  Budgets budgets = 4;
+  HeartbeatConfig heartbeat = 5;
+  int64 seed = 6;
+  bytes fixtures_manifest = 7;  // Canonical JSON manifest with SHA-256 refs.
+}
+
+// EventAck is cumulative: acked_through_sequence acknowledges every event
+// of the stream with sequence <= the value.
+message EventAck {
+  string run_id = 1;
+  string stream_id = 2;
+  uint64 acked_through_sequence = 3;
+}
+
+// ModelChunk is one streamed completion chunk.
+message ModelChunk {
+  string text = 1;
+}
+
+message ModelResponse {
+  string request_id = 1;
+  oneof result {
+    Completion completion = 2;
+    Stream stream = 3;
+    Error error = 4;
+  }
+  message Completion {
+    repeated ModelMessage messages = 1;
+    uint32 input_tokens = 2;
+    uint32 output_tokens = 3;
+  }
+  message Stream {
+    repeated ModelChunk chunks = 1;
+    uint32 input_tokens = 2;
+    uint32 output_tokens = 3;
+  }
+}
+
+message ToolResponse {
+  string request_id = 1;
+  oneof result {
+    bytes result_json = 2;  // Canonical JSON result, from fixtures only.
+    ToolFault fault = 3;    // Simulated fault; never a real tool call.
+    Error error = 4;
+  }
+}
+
+// Cancel orders the runner to stop immediately and exit with
+// RunnerFinished(CANCELLED). The supervisor reclaims all resources.
+message Cancel {
+  string reason = 1;
+}
+
+// SupervisorFinished acks RunnerFinished and ends the session.
+message SupervisorFinished {}
+
+// ---- Envelopes -----------------------------------------------------------
+
+// RunnerMessage is the single runner -> supervisor envelope.
+message RunnerMessage {
+  oneof message {
+    RunnerHello hello = 1;
+    EmitEvents emit_events = 2;
+    ModelRequest model_request = 3;
+    ToolRequest tool_request = 4;
+    Heartbeat heartbeat = 5;
+    RunnerFinished finished = 6;
+  }
+}
+
+// SupervisorMessage is the single supervisor -> runner envelope.
+message SupervisorMessage {
+  oneof message {
+    RunnerConfig config = 1;
+    EventAck event_ack = 2;
+    ModelResponse model_response = 3;
+    ToolResponse tool_response = 4;
+    Heartbeat heartbeat = 5;  // Supervisor echo/keepalive.
+    Cancel cancel = 6;
+    SupervisorFinished finished = 7;
+  }
+}

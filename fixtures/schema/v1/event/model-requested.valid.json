@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "event_id": "0190a8b0-7c3d-7f2e-8a1b-2c3d4e5f6073",
+  "run_id": "0190a8b0-7000-7a00-8000-000000000001",
+  "stream_id": "0190a8b0-7000-7a00-8000-000000000005",
+  "sequence": 3,
+  "type": "model.requested",
+  "occurred_at": "2026-01-01T12:00:01.000Z",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id": "10f067aa0ba902b8",
+  "parent_event_ids": [],
+  "invocation_id": "0190a8b0-7000-7a00-8000-000000000006",
+  "payload": {
+    "model": "gemini-2.5-pro",
+    "provider": "google",
+    "request": {
+      "messages": [{ "role": "user", "content": "check stock for ABC" }],
+      "tools": [{ "name": "inventory.lookup" }],
+      "generation": { "temperature": 0 }
+    },
+    "redactions": ["/request/messages/0/content"],
+    "replay_safe": true
+  }
+}

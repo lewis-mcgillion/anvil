@@ -1,0 +1,10 @@
+Anvil
+
+Copyright 2026 Lewis McGillion
+
+Anvil is distributed under the Apache License, Version 2.0. See LICENSE for
+the full license text.
+
+This repository currently has no third-party attribution notices beyond the
+Apache License text. When a dependency or vendored component requires an
+attribution notice, add its exact notice here and retain it in distributions.
