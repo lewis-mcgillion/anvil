@@ -310,6 +310,10 @@ async def test_http_capture_and_tenant_authorization(engine):
     app.state.cursor_secret = b"0123456789abcdef0123456789abcdef"
     headers = {"Authorization": f"Bearer {token}"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        assert (await client.post(f"/v1/projects/{PROJECT}/runs",
+                                  json={"agent_name": "test", "adapter": "adk", "adapter_version": "1"},
+                                  headers=headers)).status_code == 400
+        headers["Idempotency-Key"] = str(new_uuid7())
         response = await client.post(f"/v1/projects/{PROJECT}/runs", json={"agent_name": "test", "adapter": "adk", "adapter_version": "1"}, headers=headers)
         assert response.status_code == 201, response.text
         run_id, stream_id = response.json()["id"], response.json()["stream_id"]

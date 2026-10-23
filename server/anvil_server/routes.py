@@ -275,7 +275,7 @@ async def open_run(request: Request, project_id: UUID, payload: RunCreate):
     if error is not None:
         return error
     key = request.headers.get("Idempotency-Key")
-    if key is not None and not re.fullmatch(r"[A-Za-z0-9_-]{8,128}", key):
+    if key is None or re.fullmatch(r"[A-Za-z0-9_-]{8,128}", key) is None:
         return failure(request, 400, "invalid_request")
     digest = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
     try:
