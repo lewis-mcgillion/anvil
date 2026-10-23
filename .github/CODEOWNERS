@@ -1,0 +1,8 @@
+# Default owners for all files.
+* @lewis-mcgillion
+
+# Governance and security changes require maintainer review.
+/CODE_OF_CONDUCT.md @lewis-mcgillion
+/CONTRIBUTING.md @lewis-mcgillion
+/SECURITY.md @lewis-mcgillion
+/.github/ @lewis-mcgillion

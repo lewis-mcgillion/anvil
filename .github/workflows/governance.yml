@@ -1,0 +1,29 @@
+name: Governance checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  licensing:
+    name: Licensing and governance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - name: Verify required policy files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in LICENSE NOTICE CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs/architecture.md .github/CODEOWNERS; do
+            test -s "$file" || { echo "Missing or empty required file: $file" >&2; exit 1; }
+          done
+      - name: Verify Apache license and notice policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "Apache License, Version 2.0" LICENSE
+          grep -q "Apache License, Version 2.0" NOTICE
+          grep -q "Apache License 2.0" CONTRIBUTING.md
