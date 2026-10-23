@@ -339,7 +339,19 @@ async def test_http_capture_and_tenant_authorization(engine):
         duplicate = await client.post(artifact_url, json=artifact, headers=headers)
         assert duplicate.status_code == 201
         assert duplicate.json()["id"] == uploaded.json()["id"]
-        response = await client.post(f"/v1/projects/{PROJECT}/runs/{run_id}:seal", headers=headers)
+        short_artifact = f"/v1/runs/{run_id}/artifacts"
+        alias_artifact = await client.post(short_artifact, params={"project_id": str(PROJECT)},
+                                           json=artifact, headers=headers)
+        assert alias_artifact.status_code == 201
+        assert alias_artifact.json()["id"] == uploaded.json()["id"]
+        assert (await client.post(short_artifact, json=artifact, headers=headers)).status_code == 400
+        assert (await client.post(short_artifact, params={"project_id":
+            "0199b167-0000-7000-8000-000000000012"}, json=artifact, headers=headers)).status_code == 401
+        assert (await client.post(f"/v1/runs/{run_id}:seal", headers=headers)).status_code == 400
+        assert (await client.post(f"/v1/runs/{run_id}:seal", params={"project_id":
+            "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401
+        response = await client.post(f"/v1/runs/{run_id}:seal",
+                                     params={"project_id": str(PROJECT)}, headers=headers)
         assert response.status_code == 202, response.text
         assert await process_seal(engine, PROJECT, UUID(response.json()["job_id"]))
         async with project_connection(engine, PROJECT) as connection:
@@ -390,6 +402,9 @@ async def test_multi_stream_pagination_and_seal_guard(engine):
         headers = {"Authorization": f"Bearer {token}"}
         first = await client.get(url, params={"limit": 1}, headers=headers)
         assert first.status_code == 200, first.text
+        assert (await client.get(f"/v1/runs/{run_id}/watch", headers=headers)).status_code == 400
+        assert (await client.get(f"/v1/runs/{run_id}/watch", params={"project_id":
+            "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401
         alias = await client.get(f"/v1/runs/{run_id}/events",
                                  params={"project_id": str(PROJECT), "limit": 1}, headers=headers)
         assert alias.status_code == 200

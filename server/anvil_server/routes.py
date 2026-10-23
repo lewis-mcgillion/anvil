@@ -305,6 +305,14 @@ async def finish_run(request: Request, project_id: UUID, run_id: UUID, acknowled
                     media_type="application/json", status_code=202, headers={"Location": job_url})
 
 
+@router.post("/runs/{run_id}:seal", status_code=202)
+async def finish_run_by_id(request: Request, run_id: UUID, project_id: UUID | None = None,
+                           acknowledge_incomplete: bool = False):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await finish_run(request, project_id, run_id, acknowledge_incomplete)
+
+
 @router.post("/projects/{project_id}/runs/{run_id}/artifacts", status_code=201)
 async def upload_artifact(request: Request, project_id: UUID, run_id: UUID, payload: ArtifactCreate):
     engine, error = await scoped(request, project_id, "capture:write")
@@ -354,6 +362,14 @@ async def upload_artifact(request: Request, project_id: UUID, run_id: UUID, payl
     return {"id": str(row["id"]), "run_id": str(row["run_id"]), "name": row["name"],
             "content_type": row["media_type"], "size_bytes": row["size_bytes"],
             "sha256": "sha256:" + digest, "created_at": row["created_at"].isoformat()}
+
+
+@router.post("/runs/{run_id}/artifacts", status_code=201)
+async def upload_run_artifact(request: Request, run_id: UUID, payload: ArtifactCreate,
+                              project_id: UUID | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await upload_artifact(request, project_id, run_id, payload)
 
 
 @router.get("/projects/{project_id}/recordings/{recording_id}")
@@ -662,6 +678,13 @@ async def watch_run(request: Request, project_id: UUID, run_id: UUID):
                 await asyncio.sleep(2)
 
     return StreamingResponse(frames(), media_type="text/event-stream")
+
+
+@router.get("/runs/{run_id}/watch")
+async def watch_run_by_id(request: Request, run_id: UUID, project_id: UUID | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await watch_run(request, project_id, run_id)
 
 
 @router.get("/projects/{project_id}/jobs/{job_id}")
