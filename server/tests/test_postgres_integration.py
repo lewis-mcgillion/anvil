@@ -317,6 +317,16 @@ async def test_http_capture_and_tenant_authorization(engine):
         response = await client.post(f"/v1/projects/{PROJECT}/runs", json={"agent_name": "test", "adapter": "adk", "adapter_version": "1"}, headers=headers)
         assert response.status_code == 201, response.text
         run_id, stream_id = response.json()["id"], response.json()["stream_id"]
+        retry = await client.post(f"/v1/projects/{PROJECT}/runs",
+                                  json={"agent_name": "test", "adapter": "adk", "adapter_version": "1"},
+                                  headers=headers)
+        assert retry.status_code == 201
+        assert retry.json()["id"] == run_id
+        assert retry.json()["stream_id"] == stream_id
+        conflict = await client.post(f"/v1/projects/{PROJECT}/runs",
+                                     json={"agent_name": "different", "adapter": "adk", "adapter_version": "1"},
+                                     headers=headers)
+        assert conflict.status_code == 409
         async with project_connection(engine, PROJECT) as connection:
             metadata = (await connection.execute(text("""
                 SELECT agent_name, adapter, adapter_version FROM runs WHERE id = :run
