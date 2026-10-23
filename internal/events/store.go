@@ -70,10 +70,13 @@ func (s *Store) AcceptBatch(ctx context.Context, projectID, runID, streamID stri
 			_ = tx.Rollback()
 		}
 	}()
+	if _, err := tx.ExecContext(ctx, "SELECT set_config('anvil.project_id', $1, true)", projectID); err != nil {
+		return BatchResult{}, fmt.Errorf("set project scope: %w", err)
+	}
 
 	var next int64
 	err = tx.QueryRowContext(ctx, `SELECT next_sequence FROM run_streams
-		WHERE project_id = $1 AND run_id = $2 AND stream_id = $3 FOR UPDATE`,
+		WHERE project_id = $1 AND run_id = $2 AND id = $3 FOR UPDATE`,
 		projectID, runID, streamID).Scan(&next)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -132,7 +135,7 @@ func (s *Store) AcceptBatch(ctx context.Context, projectID, runID, streamID stri
 	}
 	if result.Accepted > 0 {
 		if _, err = tx.ExecContext(ctx, `UPDATE run_streams SET next_sequence = $1
-			WHERE project_id = $2 AND stream_id = $3`, next, projectID, streamID); err != nil {
+			WHERE project_id = $2 AND id = $3`, next, projectID, streamID); err != nil {
 			return BatchResult{}, err
 		}
 	}

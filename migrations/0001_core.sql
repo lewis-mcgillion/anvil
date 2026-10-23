@@ -83,6 +83,7 @@ CREATE TABLE run_streams (
     run_id uuid NOT NULL,
     project_id uuid NOT NULL,
     name text NOT NULL,
+    next_sequence bigint NOT NULL DEFAULT 0 CHECK (next_sequence >= 0),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     UNIQUE (run_id, name),
     UNIQUE (id, run_id, project_id),
@@ -98,7 +99,7 @@ CREATE TABLE events (
     project_id uuid NOT NULL,
     sequence bigint NOT NULL CHECK (sequence >= 0),
     schema_version text NOT NULL,
-    type text NOT NULL CHECK (type IN (
+    event_type text NOT NULL CHECK (event_type IN (
         'run.started', 'run.completed', 'run.failed', 'message.created',
         'model.requested', 'model.chunk', 'model.completed', 'model.failed',
         'tool.requested', 'tool.completed', 'tool.failed',
@@ -107,10 +108,10 @@ CREATE TABLE events (
     occurred_at timestamptz NOT NULL,
     trace_id text,
     span_id text,
-    parent_event_ids uuid[] NOT NULL DEFAULT '{}',
+    parent_event_ids jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(parent_event_ids) = 'array'),
     invocation_id uuid,
     payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object'),
-    content_hash char(64) NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
+    content_hash bytea NOT NULL CHECK (octet_length(content_hash) = 32),
     replay_safe boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     UNIQUE (stream_id, sequence),
@@ -172,6 +173,22 @@ CREATE TRIGGER events_are_immutable
 CREATE TRIGGER recordings_are_immutable
     BEFORE UPDATE OR DELETE ON recordings
     FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+
+DO $$
+DECLARE
+    scoped_table text;
+BEGIN
+    FOREACH scoped_table IN ARRAY ARRAY[
+        'project_grants', 'runs', 'run_streams', 'events', 'artifacts', 'recordings'
+    ] LOOP
+        EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', scoped_table);
+        EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', scoped_table);
+        EXECUTE format(
+            'CREATE POLICY %I ON %I USING (project_id = nullif(current_setting(''anvil.project_id'', true), '''')::uuid) WITH CHECK (project_id = nullif(current_setting(''anvil.project_id'', true), '''')::uuid)',
+            scoped_table || '_project_isolation', scoped_table
+        );
+    END LOOP;
+END $$;
 
 INSERT INTO schema_migrations (version) VALUES ('0001_core');
 

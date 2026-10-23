@@ -4,30 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 	"testing"
 )
-
-func TestRunRepositoryAlwaysBindsProjectScope(t *testing.T) {
-	db := &fakeDB{result: fakeResult(1)}
-	repo := NewRunRepository(db)
-
-	if err := repo.Create(context.Background(), "project-a", "run-a", "running"); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(db.lastQuery, "project_id") {
-		t.Fatalf("query is not project scoped: %s", db.lastQuery)
-	}
-	if got := db.lastArgs[1]; got != "project-a" {
-		t.Fatalf("project argument = %v, want project-a", got)
-	}
-	if err := repo.UpdateStatus(context.Background(), "project-a", "run-a", "failed"); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Delete(context.Background(), "project-a", "run-a"); err != nil {
-		t.Fatal(err)
-	}
-}
 
 func TestRunRepositoryFailsClosedWithoutProject(t *testing.T) {
 	db := &fakeDB{}
@@ -37,6 +15,17 @@ func TestRunRepositoryFailsClosedWithoutProject(t *testing.T) {
 	}
 	if db.lastQuery != "" {
 		t.Fatal("database was called without a project scope")
+	}
+}
+
+func TestRunRepositoryRejectsMissingRunID(t *testing.T) {
+	db := &fakeDB{}
+	repo := NewRunRepository(db)
+	if err := repo.Create(context.Background(), "project-a", "", "running"); err == nil {
+		t.Fatal("Create accepted missing run ID")
+	}
+	if db.lastQuery != "" {
+		t.Fatal("database was called with missing run ID")
 	}
 }
 

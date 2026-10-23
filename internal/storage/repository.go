@@ -79,11 +79,12 @@ func (r *RunRepository) Create(ctx context.Context, projectID, runID, status str
 	if runID == "" {
 		return errors.New("storage: invalid run id")
 	}
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO runs (id, project_id, outcome) VALUES ($1, $2, $3)`,
-		runID, projectID, status,
-	)
-	return err
+	return WithProject(ctx, r.db, projectID, func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx,
+			`INSERT INTO runs (id, project_id, execution_outcome) VALUES ($1, $2, $3)`,
+			runID, projectID, status)
+		return err
+	})
 }
 
 func (r *RunRepository) Get(ctx context.Context, projectID, runID string) (Run, error) {
@@ -91,11 +92,12 @@ func (r *RunRepository) Get(ctx context.Context, projectID, runID string) (Run, 
 		return Run{}, err
 	}
 	var run Run
-	err := r.db.QueryRowContext(ctx,
-		`SELECT id, project_id, outcome FROM runs
-		 WHERE project_id = $1 AND id = $2`,
-		projectID, runID,
-	).Scan(&run.ID, &run.ProjectID, &run.Status)
+	err := WithProject(ctx, r.db, projectID, func(ctx context.Context, tx *sql.Tx) error {
+		return tx.QueryRowContext(ctx,
+			`SELECT id, project_id, execution_outcome FROM runs
+			 WHERE project_id = $1 AND id = $2`,
+			projectID, runID).Scan(&run.ID, &run.ProjectID, &run.Status)
+	})
 	if err == sql.ErrNoRows {
 		return Run{}, ErrNotFound
 	}
@@ -109,29 +111,29 @@ func (r *RunRepository) UpdateStatus(ctx context.Context, projectID, runID, stat
 	if err := validateProjectID(projectID); err != nil {
 		return err
 	}
-	result, err := r.db.ExecContext(ctx,
-		`UPDATE runs SET outcome = $1
-		 WHERE project_id = $2 AND id = $3`,
-		status, projectID, runID,
-	)
-	if err != nil {
-		return err
-	}
-	return rowsAffectedOrNotFound(result)
+	return WithProject(ctx, r.db, projectID, func(ctx context.Context, tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx,
+			`UPDATE runs SET execution_outcome = $1
+			 WHERE project_id = $2 AND id = $3`, status, projectID, runID)
+		if err != nil {
+			return err
+		}
+		return rowsAffectedOrNotFound(result)
+	})
 }
 
 func (r *RunRepository) Delete(ctx context.Context, projectID, runID string) error {
 	if err := validateProjectID(projectID); err != nil {
 		return err
 	}
-	result, err := r.db.ExecContext(ctx,
-		`DELETE FROM runs WHERE project_id = $1 AND id = $2`,
-		projectID, runID,
-	)
-	if err != nil {
-		return err
-	}
-	return rowsAffectedOrNotFound(result)
+	return WithProject(ctx, r.db, projectID, func(ctx context.Context, tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx,
+			`DELETE FROM runs WHERE project_id = $1 AND id = $2`, projectID, runID)
+		if err != nil {
+			return err
+		}
+		return rowsAffectedOrNotFound(result)
+	})
 }
 
 func rowsAffectedOrNotFound(result sql.Result) error {

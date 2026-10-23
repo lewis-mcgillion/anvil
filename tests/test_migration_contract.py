@@ -38,7 +38,8 @@ class CoreMigrationContractTests(unittest.TestCase):
     def test_event_conflicts_are_rejected_by_constraints(self):
         self.assertIn("event_id uuid PRIMARY KEY", self.sql)
         self.assertIn("UNIQUE (stream_id, sequence)", self.sql)
-        self.assertIn("content_hash char(64) NOT NULL", self.sql)
+        self.assertIn("content_hash bytea NOT NULL", self.sql)
+        self.assertIn("octet_length(content_hash) = 32", self.sql)
         self.assertIn("events_are_immutable", self.sql)
 
     def test_replay_data_has_no_execution_capability(self):

@@ -11,7 +11,7 @@ import (
 
 type manifest struct {
 	Fixtures []struct {
-		ID string `json:"id"`
+		ID   string `json:"id"`
 		File string `json:"file"`
 		Hash string `json:"sha256"`
 	} `json:"fixtures"`
