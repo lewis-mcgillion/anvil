@@ -4,7 +4,7 @@ import zipfile
 
 import pytest
 
-from anvil_server.bundles import MAX_ARTIFACT, export_bundle, import_bundle, validate_recording_archive
+from anvil_server.bundles import MAX_ARTIFACT, MAX_BUNDLE, export_bundle, import_bundle, validate_recording_archive
 
 
 def test_bundle_round_trip():
@@ -69,4 +69,24 @@ def test_invalid_artifact_size_is_rejected(size):
                            "media_type": "application/octet-stream"}]}))
         archive.writestr("artifacts/" + "a" * 64, b"x")
     with pytest.raises(ValueError):
+        import_bundle(output.getvalue())
+
+
+def test_duplicate_archive_member_is_rejected():
+    output = io.BytesIO()
+    manifest = json.dumps({"schema_version": "1", "recording_id": "test", "artifacts": []})
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("manifest.json", manifest)
+        archive.writestr("manifest.json", manifest)
+    with pytest.raises(ValueError, match="Invalid archive members"):
+        import_bundle(output.getvalue())
+
+
+def test_compressed_bomb_is_rejected_before_decompression():
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", json.dumps({"schema_version": "1",
+                                                      "recording_id": "test", "artifacts": []}))
+        archive.writestr("recording.json", b"a" * (MAX_BUNDLE + 1))
+    with pytest.raises(ValueError, match="Decompression limit exceeded"):
         import_bundle(output.getvalue())
