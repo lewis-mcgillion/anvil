@@ -61,12 +61,20 @@ def export_bundle(recording_id: str, artifacts: dict[str, bytes],
 def import_bundle(data: bytes) -> tuple[dict, dict[str, bytes]]:
     if len(data) > MAX_BUNDLE:
         raise ValueError("Bundle too large")
+    try:
+        return _read_bundle(data)
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, EOFError, UnicodeDecodeError, KeyError, TypeError, OverflowError) as error:
+        raise ValueError("Invalid archive") from error
+
+
+def _read_bundle(data: bytes) -> tuple[dict, dict[str, bytes]]:
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         files = archive.infolist()
         names = [info.filename for info in files]
         if len(files) > MAX_FILES or len(names) != len(set(names)) or "manifest.json" not in names:
             raise ValueError("Invalid archive members")
-        if any(info.is_dir() or (info.file_size > MAX_ARTIFACT and info.filename != "recording.json")
+        if any(info.is_dir() or info.flag_bits & 1 or info.compress_type not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+               or (info.file_size > MAX_ARTIFACT and info.filename != "recording.json")
                or info.external_attr >> 16 & 0o170000 == 0o120000
                or info.filename not in {"manifest.json", "recording.json"}
                and not re.fullmatch(r"artifacts/[0-9a-f]{64}", info.filename) for info in files):
@@ -76,7 +84,8 @@ def import_bundle(data: bytes) -> tuple[dict, dict[str, bytes]]:
         manifest_info = archive.getinfo("manifest.json")
         if manifest_info.file_size > MAX_ARTIFACT:
             raise ValueError("Manifest too large")
-        manifest = json.loads(archive.read("manifest.json"))
+        with archive.open("manifest.json") as member:
+            manifest = json.loads(member.read(MAX_ARTIFACT + 1))
         if (not isinstance(manifest, dict) or
                 set(manifest) - {"schema_version", "recording_id", "artifacts", "recording_sha256", "recording_size"} or
                 manifest.get("schema_version") != "1" or not manifest.get("recording_id") or
@@ -85,7 +94,8 @@ def import_bundle(data: bytes) -> tuple[dict, dict[str, bytes]]:
         artifacts = {}
         expected = {"manifest.json"}
         if "recording_sha256" in manifest:
-            if "recording.json" not in names or not isinstance(manifest.get("recording_size"), int):
+            if ("recording.json" not in names or type(manifest.get("recording_size")) is not int
+                    or manifest["recording_size"] < 0 or manifest["recording_size"] > MAX_BUNDLE):
                 raise ValueError("Missing recording data")
             with archive.open("recording.json") as member:
                 contents = member.read(MAX_BUNDLE + 1)
@@ -103,9 +113,14 @@ def import_bundle(data: bytes) -> tuple[dict, dict[str, bytes]]:
         elif "recording.json" in names:
             raise ValueError("Unmanifested recording")
         for entry in manifest["artifacts"]:
-            if not isinstance(entry, dict) or set(entry) - {"name", "sha256", "size", "media_type"}:
+            if not isinstance(entry, dict) or set(entry) != {"name", "sha256", "size", "media_type"}:
                 raise ValueError("Invalid artifact entry")
             name, digest, size = entry["name"], entry["sha256"], entry["size"]
+            if (not isinstance(name, str) or not isinstance(digest, str)
+                    or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+                    or type(size) is not int or size < 0
+                    or not isinstance(entry["media_type"], str)):
+                raise ValueError("Invalid artifact metadata")
             _validate_name(name)
             path = "artifacts/" + digest
             if path in expected or name in artifacts or path not in names or size > MAX_ARTIFACT:

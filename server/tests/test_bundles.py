@@ -52,3 +52,21 @@ def test_unrecognized_manifest_fields_are_rejected():
                                                       "artifacts": [], "untrusted": "extra"}))
     with pytest.raises(ValueError, match="Invalid manifest"):
         import_bundle(output.getvalue())
+
+
+@pytest.mark.parametrize("invalid", [b"not a zip", b"PK\\x03\\x04"])
+def test_malformed_archive_returns_validation_error(invalid):
+    with pytest.raises(ValueError):
+        import_bundle(invalid)
+
+
+@pytest.mark.parametrize("size", [-1, True, "1"])
+def test_invalid_artifact_size_is_rejected(size):
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("manifest.json", json.dumps({"schema_version": "1", "recording_id": "test",
+            "artifacts": [{"name": "asset", "sha256": "a" * 64, "size": size,
+                           "media_type": "application/octet-stream"}]}))
+        archive.writestr("artifacts/" + "a" * 64, b"x")
+    with pytest.raises(ValueError):
+        import_bundle(output.getvalue())

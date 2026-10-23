@@ -3,6 +3,23 @@ from fastapi.testclient import TestClient
 from anvil_server.app import app
 
 
+def test_chunked_request_body_limit():
+    from httpx import ASGITransport, AsyncClient
+    import asyncio
+
+    async def check():
+        async def chunks():
+            for _ in range(5):
+                yield b"x" * (1024 * 1024)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/v1/projects", content=chunks())
+            assert response.status_code == 413
+            assert response.json()["code"] == "payload_too_large"
+
+    asyncio.run(check())
+
+
 client = TestClient(app)
 
 

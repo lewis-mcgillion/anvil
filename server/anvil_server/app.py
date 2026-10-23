@@ -7,6 +7,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from starlette.types import ASGIApp, Receive, Scope, Send
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -51,6 +52,51 @@ app = FastAPI(title="Anvil API", version="1.0.0", lifespan=lifespan)
 app.include_router(router)
 
 
+class BodyLimitMiddleware:
+    def __init__(self, application: ASGIApp):
+        self.application = application
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            return await self.application(scope, receive, send)
+        path = scope.get("path", "")
+        max_body = 12 * 1024 * 1024 if path.endswith("/artifacts") else 4 * 1024 * 1024
+        headers = dict(scope.get("headers", []))
+        content_length = headers.get(b"content-length", b"")
+        if content_length.isdigit() and int(content_length) > max_body:
+            await self._reject(send)
+            return
+        total = 0
+        chunks = []
+        while True:
+            message = await receive()
+            if message["type"] == "http.request":
+                total += len(message.get("body", b""))
+                if total > max_body:
+                    await self._reject(send)
+                    return
+            chunks.append(message)
+            if message["type"] == "http.disconnect" or not message.get("more_body", False):
+                break
+
+        async def replay_receive():
+            if chunks:
+                return chunks.pop(0)
+            return await receive()
+
+        await self.application(scope, replay_receive, send)
+
+    @staticmethod
+    async def _reject(send: Send):
+        body = b'{"type":"about:blank","title":"Payload too large","status":413,"code":"payload_too_large"}'
+        await send({"type": "http.response.start", "status": 413,
+                    "headers": [(b"content-type", b"application/problem+json")]})
+        await send({"type": "http.response.body", "body": body})
+
+
+app.add_middleware(BodyLimitMiddleware)
+
+
 @app.exception_handler(RequestValidationError)
 async def invalid_request(request: Request, exc: RequestValidationError):
     return problem(request, 400, "invalid_request", "Request failed schema validation")
@@ -60,11 +106,7 @@ async def invalid_request(request: Request, exc: RequestValidationError):
 async def request_context(request: Request, call_next):
     request_id = str(uuid.uuid4())
     request.state.request_id = request_id
-    max_body = 12 * 1024 * 1024 if request.url.path.endswith("/artifacts") else 4 * 1024 * 1024
-    if request.headers.get("content-length", "").isdigit() and int(request.headers["content-length"]) > max_body:
-        response = problem(request, 413, "payload_too_large", "Request body exceeds configured limit")
-    else:
-        response = await call_next(request)
+    response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
     return response
 
