@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
 from .database import engine_for, project_connection
+from .bundles import MAX_BUNDLE
 from .repositories import RunRepository
 from .security import AccessDenied, Unauthenticated, authorize
 from .routes import router
@@ -61,7 +62,12 @@ class BodyLimitMiddleware:
         if scope["type"] != "http":
             return await self.application(scope, receive, send)
         path = scope.get("path", "")
-        max_body = 12 * 1024 * 1024 if path.endswith("/artifacts") else 4 * 1024 * 1024
+        if path.endswith("/imports:verified"):
+            max_body = ((MAX_BUNDLE + 2) // 3) * 4 + 4096
+        elif path.endswith("/artifacts"):
+            max_body = 12 * 1024 * 1024
+        else:
+            max_body = 4 * 1024 * 1024
         headers = dict(scope.get("headers", []))
         content_length = headers.get(b"content-length", b"")
         if content_length.isdigit() and int(content_length) > max_body:

@@ -29,6 +29,17 @@ def test_declared_oversized_body_rejected_before_handler():
     assert response.json()["request_id"] == response.headers["X-Request-ID"]
 
 
+def test_archive_import_has_its_own_bounded_request_limit():
+    from anvil_server.bundles import MAX_BUNDLE
+
+    url = "/v1/projects/0199b167-0000-7000-8000-000000000011/imports:verified"
+    allowed = client.post(url, content=b"{}", headers={"Content-Length": str(8 * 1024 * 1024)})
+    assert allowed.status_code != 413
+    oversized = client.post(url, content=b"{}",
+                            headers={"Content-Length": str(MAX_BUNDLE * 2)})
+    assert oversized.status_code == 413
+
+
 client = TestClient(app)
 
 
