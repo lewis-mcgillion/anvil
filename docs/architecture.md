@@ -141,6 +141,10 @@ Exit codes: 0 gates passed, 1 assertion/judge gate failed, 2 invalid input, 3 in
 - Local installation binds to loopback. Self-hosted public access requires TLS, OIDC, scoped keys, CSP/CSRF/CORS and hardened deployment templates.
 - Treat traces, Markdown, imported archives, judge input and agent output as untrusted data. No agent-provided instructions can alter permissions or runner controls.
 - Audit reads, exports, executions and deletions without storing raw prompts in logs. Backups, data deletion, retention and policy changes are documented and tested.
+- Retention defaults to 30 days. Deleting a project resource traverses its
+  project-scoped derived-resource graph and records immutable deletion evidence;
+  active payload bytes are checked against project quotas. Backups have an
+  independent, documented expiry and are pruned explicitly.
 - Release gates include dependency review, SBOM, license policy, secret detection, signed artifacts and provenance.
 
 ## Testing and quality gates
@@ -179,3 +183,8 @@ Release acceptance: a clean checkout installs locally, captures a synthetic ADK 
 Root initiative is #1. Fourteen epic issues reference their six tasks each, and every task has explicit deliverable, acceptance checks and test obligations. Maintain published issue IDs `ANVIL-001` through `ANVIL-084` as stable references.
 
 Every task is complete only when its feature, negative paths, cancellation behavior where relevant, contract tests, documentation and security checks pass. A baseline update creates a new immutable recording and comparison, never overwrites existing evidence. Schema evolution requires explicit compatibility and migrations. No unresolved blocker may be concealed by a mock-only demo.
+
+Lifecycle compatibility: retention and deletion records are versioned by their
+resource identifiers and remain project-scoped. New derived resource kinds must
+declare their parent references before they can participate in deletion
+traversal; older clients continue to receive explicit errors for unknown kinds.
