@@ -22,6 +22,8 @@ builds, field-tag goldens) enforce the mechanical parts.
 - Events: `schema_version` per event (`"1"`). Projection: pinned
   `projection_version` query parameter.
 - Suites: `apiVersion`/`kind` in the document.
+- Pagination cursors: signed version `1` envelopes. Cursor contents are
+  opaque and may change only in a backward-compatible way within `/v1`.
 
 ## Compatible (additive) changes — allowed within a major version
 
