@@ -8,7 +8,6 @@ from anvil_server.app import app
 
 KNOWN_MISSING = {
     "GET /projects",
-    "POST /runs/{run_id}/events:batch", "GET /runs/{run_id}/events",
     "POST /runs/{run_id}/artifacts", "POST /runs/{run_id}:seal",
     "GET /runs/{run_id}/watch",
     "POST /recordings/{recording_id}/exports", "POST /projects/{project_id}/imports",

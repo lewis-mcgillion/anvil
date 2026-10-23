@@ -322,6 +322,13 @@ async def test_http_capture_and_tenant_authorization(engine):
         response = await client.post(f"/v1/projects/{PROJECT}/runs/{run_id}/events:batch",
                                      json={"events": [event.model_dump(mode="json")]}, headers=headers)
         assert response.status_code == 200, response.text
+        alias = await client.post(f"/v1/runs/{run_id}/events:batch",
+                                  params={"project_id": str(PROJECT)},
+                                  json={"events": [event.model_dump(mode="json")]}, headers=headers)
+        assert alias.status_code == 200, alias.text
+        assert alias.json()["duplicates"] == 1
+        assert (await client.post(f"/v1/runs/{run_id}/events:batch",
+                                  json={"events": [event.model_dump(mode="json")]}, headers=headers)).status_code == 400
         artifact_url = f"/v1/projects/{PROJECT}/runs/{run_id}/artifacts"
         artifact_bytes = f"hello {run_id}".encode()
         artifact = {"name": "capture.txt", "content_type": "text/plain",
@@ -383,6 +390,13 @@ async def test_multi_stream_pagination_and_seal_guard(engine):
         headers = {"Authorization": f"Bearer {token}"}
         first = await client.get(url, params={"limit": 1}, headers=headers)
         assert first.status_code == 200, first.text
+        alias = await client.get(f"/v1/runs/{run_id}/events",
+                                 params={"project_id": str(PROJECT), "limit": 1}, headers=headers)
+        assert alias.status_code == 200
+        assert alias.json() == first.json()
+        assert (await client.get(f"/v1/runs/{run_id}/events", headers=headers)).status_code == 400
+        assert (await client.get(f"/v1/runs/{run_id}/events", params={"project_id":
+            "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401
         cursor = first.json()["next_cursor"]
         assert cursor
         second = await client.get(url, params={"limit": 1, "cursor": cursor}, headers=headers)

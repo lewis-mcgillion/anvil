@@ -283,6 +283,14 @@ async def ingest_events(request: Request, project_id: UUID, run_id: UUID, payloa
         return failure(request, 400, "invalid_request")
 
 
+@router.post("/runs/{run_id}/events:batch")
+async def ingest_run_events(request: Request, run_id: UUID, payload: EventBatch,
+                            project_id: UUID | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await ingest_events(request, project_id, run_id, payload)
+
+
 @router.post("/projects/{project_id}/runs/{run_id}:seal", status_code=202)
 async def finish_run(request: Request, project_id: UUID, run_id: UUID, acknowledge_incomplete: bool = False):
     engine, error = await scoped(request, project_id, "capture:write")
@@ -591,6 +599,15 @@ async def list_events(request: Request, project_id: UUID, run_id: UUID, limit: i
         str(rows[limit - 1]["stream_id"]), rows[limit - 1]["sequence"], str(rows[limit - 1]["event_id"])]),
                                filters) if len(rows) > limit else None
     return {"items": items, "next_cursor": next_cursor}
+
+
+@router.get("/runs/{run_id}/events")
+async def list_run_events(request: Request, run_id: UUID, project_id: UUID | None = None,
+                          limit: int = 100, cursor: str | None = None,
+                          stream_id: UUID | None = None, type: str | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await list_events(request, project_id, run_id, limit, cursor, stream_id, type)
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/watch")
