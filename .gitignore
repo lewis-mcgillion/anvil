@@ -16,3 +16,12 @@ __pycache__/
 
 # Editor/OS noise
 .DS_Store
+bin/
+node_modules/
+web/dist/
+# Generated code (reproducible via `make generate`); module scaffolding
+# (go.mod, go.sum, doc.go) stays tracked.
+api/gen/**/*.gen.go
+runner/gen/**/*.pb.go
+web/src/api-types.ts
+coverage.out
