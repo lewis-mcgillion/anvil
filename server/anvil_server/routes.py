@@ -97,7 +97,22 @@ async def register_agent_version(request: Request, project_id: UUID, payload: Ag
     engine, error = await scoped(request, project_id, "replay:write")
     if error is not None:
         return error
+    key = request.headers.get("Idempotency-Key")
+    if key is None or re.fullmatch(r"[A-Za-z0-9_-]{8,128}", key) is None:
+        return failure(request, 400, "invalid_request")
+    digest = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
     async with project_connection(engine, project_id) as connection:
+        await connection.execute(text("""
+            SELECT pg_advisory_xact_lock(hashtextextended(:lock, 0))
+        """), {"lock": str(project_id) + ":" + key})
+        previous = (await connection.execute(text("""
+            SELECT request_hash, response FROM idempotency_keys
+            WHERE project_id = :project AND key = :key
+        """), {"project": project_id, "key": key})).mappings().first()
+        if previous is not None:
+            if previous["request_hash"] != digest:
+                return failure(request, 409, "conflict")
+            return previous["response"]
         row = (await connection.execute(text("""
             INSERT INTO agent_versions (id, project_id, image, entrypoint, adapter, adapter_version)
             VALUES (:id, :project, :image, :entrypoint, :adapter, :version)
@@ -107,8 +122,13 @@ async def register_agent_version(request: Request, project_id: UUID, payload: Ag
         """), {"id": new_uuid7(), "project": project_id, "image": payload.image,
                "entrypoint": payload.entrypoint, "adapter": payload.adapter,
                "version": payload.adapter_version})).mappings().one()
-    return {**{key: str(value) if isinstance(value, UUID) else value for key, value in row.items()
-               if key != "created_at"}, "created_at": row["created_at"].isoformat()}
+        result = {**{field: str(value) if isinstance(value, UUID) else value for field, value in row.items()
+                     if field != "created_at"}, "created_at": row["created_at"].isoformat()}
+        await connection.execute(text("""
+            INSERT INTO idempotency_keys(project_id, key, request_hash, status_code, response)
+            VALUES (:project, :key, :hash, 201, CAST(:response AS jsonb))
+        """), {"project": project_id, "key": key, "hash": digest, "response": json.dumps(result)})
+    return result
 
 
 @router.get("/projects/{project_id}/runs")

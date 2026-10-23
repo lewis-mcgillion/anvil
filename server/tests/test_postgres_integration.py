@@ -43,13 +43,15 @@ async def test_agent_version_requires_pinned_image_and_project_scope(engine):
     app.state.engine = engine
     payload = {"image": "registry.example/agent@sha256:" + "a" * 64,
                "entrypoint": "/app/agent", "adapter": "adk", "adapter_version": "1"}
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {token}", "Idempotency-Key": str(new_uuid7())}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         url = f"/v1/projects/{PROJECT}/agent-versions"
         invalid = await client.post(url, json={**payload, "image": "registry.example/agent:latest"}, headers=headers)
         assert invalid.status_code == 400
         created = await client.post(url, json=payload, headers=headers)
         assert created.status_code == 201, created.text
+        conflict = await client.post(url, json={**payload, "entrypoint": "/app/other"}, headers=headers)
+        assert conflict.status_code == 409
         repeated = await client.post(url, json=payload, headers=headers)
         assert repeated.status_code == 201, repeated.text
         assert created.json()["id"] == repeated.json()["id"]
