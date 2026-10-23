@@ -2,9 +2,9 @@ export const epics = [
   ['Architecture, contracts, and governance',1,[
     ['Establish repository and Apache-2.0 governance','Create CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, templates, ownership, NOTICE policy and licensing checks.','Fresh clone supports contributor and responsible disclosure workflows.'],
     ['Publish architecture decisions and threat model','Write ADRs for execution modes, trust boundaries, storage, isolation, replay and broker.','Threat scenarios cover untrusted code, malicious recordings, secret leakage and tenant isolation.'],
-    ['Freeze versioned event and recording schemas','Define JSON Schemas for run, event, stream, artifacts, sealing, capture gaps and manifest.','Go, Python and TypeScript validators agree on positive and negative fixtures.'],
+    ['Freeze versioned event and recording schemas','Define JSON Schemas for run, event, stream, artifacts, sealing, capture gaps and manifest.','Python and TypeScript validators agree on positive and negative fixtures.'],
     ['Publish REST and runner protocol contracts','Write OpenAPI v1, protobuf UDS protocol, errors, auth scopes, retries, idempotency and compatibility policy.','Generated clients compile and no protocol operation permits arbitrary execution.'],
-    ['Implement polyglot development and CI foundation','Set up Go, Python, TypeScript builds, lockfiles, formatting, lint, test matrix and container builds.','All checks pass in CI from a clean checkout without credentials.'],
+    ['Implement Python and TypeScript development and CI foundation','Set up Python API/worker/SDK and TypeScript builds, lockfiles, formatting, lint, test matrix and container builds.','All checks pass in CI from a clean checkout without credentials.'],
     ['Create cross-language conformance fixture corpus','Add immutable sample runs covering streaming, parallel calls, errors, redaction, missing events and retries.','Fixtures have canonical hashes and expected outcomes verified by each language.'],
   ]],
   ['PostgreSQL persistence and lifecycle',1,[
@@ -15,8 +15,8 @@ export const epics = [
     ['Implement bounded artifacts and portable recording bundles','Store hashed artifacts; import/export portable .anvil archives with safe parsing and schema manifests.','Round-trip hashes match; traversal, bombs, oversized payloads and tampering are rejected.'],
     ['Implement retention, deletion and storage accounting','Enforce 30-day defaults, deletion graph traversal, project quotas and deletion audit evidence.','Deleting runs eliminates active derived payload references; backups follow documented retention.'],
   ]],
-  ['Go API, authentication, and durable jobs',1,[
-    ['Implement Go HTTP API skeleton','Add OpenAPI routes, strict JSON decoding, problem+json errors, request IDs, health checks and graceful shutdown.','Contract tests cover invalid fields, oversized bodies and shutdown behavior.'],
+  ['Python API, authentication, and durable jobs',1,[
+    ['Implement FastAPI HTTP API skeleton','Add OpenAPI routes, strict Pydantic decoding, problem+json errors, request IDs, health checks and graceful shutdown.','Contract tests cover invalid fields, oversized bodies and shutdown behavior.'],
     ['Implement project identities, keys and authorization','Build principal bootstrap, hashed scoped API keys, permissions, key rotation and revocation.','Role matrix denies capture keys read and replay permissions.'],
     ['Implement run capture and sealing endpoints','Support run creation, event batches, bounded artifacts, seal jobs and quotas with Retry-After.','Python SDK fixture uploads pass, overload is bounded and authorization enforced.'],
     ['Implement crash-safe PostgreSQL job queue','Implement lease/heartbeat, SKIP LOCKED workers, timeouts, cancellation, attempts and interrupted outcome handling.','Kill/restart tests preserve exactly documented effects and paid-call provenance.'],
