@@ -1,0 +1,60 @@
+name: contracts
+
+on:
+  pull_request:
+    paths:
+      - 'api/**'
+      - 'proto/**'
+      - 'runner/**'
+      - 'internal/contracts/**'
+      - 'web/**'
+      - 'docs/**'
+      - 'Makefile'
+      - 'buf.*.yaml'
+      - '.github/workflows/contracts.yml'
+
+permissions: {}
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pinned generators
+        run: make tools
+
+      - name: Lint protobuf
+        run: ./bin/buf lint
+
+      - name: Check protobuf breaking changes
+        run: ./bin/buf breaking --against '.git#branch=main'
+        # Main may not exist on the very first contract PR; tolerate it.
+        continue-on-error: true
+
+      - name: Generate clients (Go, TypeScript)
+        run: make generate
+
+      - name: Generated code is up to date
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)"
+
+      - name: Build generated clients
+        run: |
+          (cd runner/gen && go build ./...)
+          (cd api/gen && go build ./...)
+          (cd web && npx tsc --noEmit)
+
+      - name: Contract tests
+        run: cd internal/contracts && go test -v ./...

@@ -20,7 +20,7 @@ Any unmatched or ambiguous tool invocation fails closed. No execution mode silen
 
 ## Stack, layout and dependencies
 
-- Go API and worker in a modular monolith. REST is specified by `api/openapi.yaml`; internal runner messages use versioned protobuf over Unix domain sockets.
+- Go API and worker in a modular monolith. REST is specified by `api/openapi.yaml`; internal runner messages use versioned protobuf over Unix domain sockets (`proto/anvil/runner/v1/runner.proto`). Contract semantics (errors, scopes, retries, idempotency, cancellation) live in [docs/api-contract.md](api-contract.md); evolution rules live in [docs/compatibility.md](compatibility.md).
 - PostgreSQL for authoritative metadata, immutable event payloads (JSONB), artifacts, suites, job leases and audit events. No Redis or dedicated object storage for MVP.
 - Python capture SDK with Google ADK hooks as the first supported integration. OpenTelemetry trace/span IDs correlate capture to existing tracing. LangGraph follows after release.
 - React and TypeScript with generated API bindings, accessible components and virtualized timeline rendering.
@@ -85,7 +85,7 @@ Testing and operations:
 
 Re-execution requests reference immutable `recording_id`, `agent_version_id`, `model_mode` (`recorded` or `live`), fixture matching policy, explicit initial state, seed, fault plan and budgets. Default limits: 120-second wall time, 20 model calls, 100 tool calls, 20k input and 10k output tokens, and USD 1.00 estimated model spend. Live mode additionally requires an approved provider profile with server-managed credentials and endpoints.
 
-Internal runner protocol messages: `RunnerHello`, `EmitEvents`, `ModelRequest`, `ModelResponse`, `ToolRequest`, `ToolResponse`, `Heartbeat`, `RunnerFinished`. No arbitrary HTTP, filesystem, command execution or original-tool invocation primitive is exposed.
+Internal runner protocol messages: `RunnerHello`, `EmitEvents`, `ModelRequest`, `ModelResponse`, `ToolRequest`, `ToolResponse`, `Heartbeat`, `RunnerFinished`. No arbitrary HTTP, filesystem, command execution or original-tool invocation primitive is exposed. The wire contract is `proto/anvil/runner/v1/runner.proto`; `internal/contracts` tests reject any field that would introduce an execution surface.
 
 ## Replay, comparison and fault design
 
