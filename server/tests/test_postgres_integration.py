@@ -2,6 +2,7 @@
 
 import os
 import base64
+import asyncio
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 import secrets
@@ -114,6 +115,26 @@ async def test_durable_lease_is_exclusive(engine):
     await queue.complete(PROJECT, job, first_token, "succeeded")
     with pytest.raises(LeaseLost):
         await queue.cancel(PROJECT, job)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_workers_cannot_claim_same_job(engine):
+    queue = JobQueue(engine, timedelta(seconds=30))
+    job_id = new_uuid7()
+    await queue.create(PROJECT, job_id, "seal")
+    first_token, second_token = new_uuid7(), new_uuid7()
+    claims = await asyncio.gather(
+        queue.acquire_job(PROJECT, job_id, first_token),
+        queue.acquire_job(PROJECT, job_id, second_token),
+    )
+    assert sum(claim is not None for claim in claims) == 1
+    job = await queue.get(PROJECT, job_id)
+    assert job["attempts"] == 1
+    winner = job["lease_token"]
+    loser = second_token if winner == first_token else first_token
+    with pytest.raises(LeaseLost):
+        await queue.complete(PROJECT, job_id, loser, "succeeded")
+    await queue.complete(PROJECT, job_id, winner, "succeeded")
 
 
 @pytest.mark.asyncio
