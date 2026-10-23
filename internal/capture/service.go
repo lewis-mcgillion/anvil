@@ -267,8 +267,20 @@ func (s *Service) UploadArtifact(runID, key string, req ArtifactRequest, scopes 
 	if !ok {
 		return ArtifactResponse{}, ErrNotFound
 	}
-	if r.run.CaptureState != "open" {
-		return ArtifactResponse{}, ErrConflict
+	requestBytes, _ := json.Marshal(req)
+	if key != "" {
+		if cached, ok := s.idempotency[key]; ok {
+			if string(cached.request) != string(requestBytes) {
+				return ArtifactResponse{}, ErrConflict
+			}
+			var response ArtifactResponse
+			if json.Unmarshal(cached.response, &response) == nil {
+				return response, nil
+			}
+		}
+		if r.run.CaptureState != "open" {
+			return ArtifactResponse{}, ErrConflict
+		}
 	}
 	if r.artifacts+int64(len(data)) > s.maxRunBytes {
 		return ArtifactResponse{}, ErrThrottled
@@ -278,8 +290,14 @@ func (s *Service) UploadArtifact(runID, key string, req ArtifactRequest, scopes 
 		return ArtifactResponse{}, err
 	}
 	r.artifacts += int64(len(data))
-	return ArtifactResponse{ID: newID(), RunID: runID, Name: req.Name, ContentType: req.ContentType,
-		SizeBytes: len(data), SHA256: artifact.Hash, CreatedAt: time.Now().UTC()}, nil
+	response := ArtifactResponse{ID: newID(), RunID: runID, Name: req.Name, ContentType: req.ContentType,
+		SizeBytes: len(data), SHA256: artifact.Hash, CreatedAt: time.Now().UTC()}
+	if key != "" {
+		if responseBytes, marshalErr := json.Marshal(response); marshalErr == nil {
+			s.idempotency[key] = idempotencyEntry{request: requestBytes, response: responseBytes}
+		}
+	}
+	return response, nil
 }
 
 func (s *Service) Seal(runID, key string, acknowledge bool, scopes map[string]bool) (Job, error) {
@@ -292,13 +310,30 @@ func (s *Service) Seal(runID, key string, acknowledge bool, scopes map[string]bo
 	if !ok {
 		return Job{}, ErrNotFound
 	}
-	if r.run.CaptureState != "open" {
-		return Job{}, ErrConflict
+	requestBytes, _ := json.Marshal(acknowledge)
+	if key != "" {
+		if cached, ok := s.idempotency[key]; ok {
+			if string(cached.request) != string(requestBytes) {
+				return Job{}, ErrConflict
+			}
+			var job Job
+			if json.Unmarshal(cached.response, &job) == nil {
+				return job, nil
+			}
+		}
+		if r.run.CaptureState != "open" {
+			return Job{}, ErrConflict
+		}
 	}
 	r.run.CaptureState = "sealing"
 	jobID := newID()
 	job := Job{ID: jobID, Status: "queued", URL: "/v1/jobs/" + jobID}
 	s.jobs[job.ID] = job
+	if key != "" {
+		if responseBytes, marshalErr := json.Marshal(job); marshalErr == nil {
+			s.idempotency[key] = idempotencyEntry{request: requestBytes, response: responseBytes}
+		}
+	}
 	go s.finishSeal(job.ID, runID, acknowledge)
 	return job, nil
 }
