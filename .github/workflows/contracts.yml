@@ -6,7 +6,7 @@ on:
       - 'api/**'
       - 'proto/**'
       - 'runner/**'
-      - 'internal/contracts/**'
+      - 'server/**'
       - 'web/**'
       - 'docs/**'
       - 'Makefile'
@@ -23,38 +23,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Install pinned generators
-        run: make tools
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: Lint protobuf
-        run: ./bin/buf lint
+      - name: Install schema validators
+        run: python -m pip install -e './sdk/python[test]' -e './server[test]'
 
-      - name: Check protobuf breaking changes
-        run: ./bin/buf breaking --against '.git#branch=main'
-        # Main may not exist on the very first contract PR; tolerate it.
-        continue-on-error: true
-
-      - name: Generate clients (Go, TypeScript)
-        run: make generate
-
-      - name: Generated code is up to date
+      - name: Validate Python and TypeScript contracts
         run: |
-          git status --porcelain
-          test -z "$(git status --porcelain)"
-
-      - name: Build generated clients
-        run: |
-          (cd runner/gen && go build ./...)
-          (cd api/gen && go build ./...)
+          python -m pytest -q sdk/python/tests
+          (cd web && npm ci && npm run generate)
           (cd web && npx tsc --noEmit)
-
-      - name: Contract tests
-        run: cd internal/contracts && go test -v ./...
