@@ -592,7 +592,8 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
         assert settings.json()["retention_days"] == 31
         await client.patch(f"/v1/projects/{PROJECT}", json={"retention_days": 30}, headers=headers)
         created = await client.post(f"/v1/projects/{PROJECT}/keys", json={
-            "name": str(new_uuid7()), "scopes": ["capture:write"]}, headers=headers)
+            "name": str(new_uuid7()), "scopes": ["capture:write"]},
+            headers={**headers, "Idempotency-Key": str(new_uuid7())})
         assert created.status_code == 201, created.text
         assert created.json()["secret"].startswith("anv_")
         revoked = await client.delete(f"/v1/projects/{PROJECT}/keys/{created.json()['id']}", headers=headers)
