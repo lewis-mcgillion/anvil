@@ -1,0 +1,5 @@
+apiVersion: anvil.dev/v1alpha1
+kind: RegressionSuite
+name: first
+name: second
+cases: []

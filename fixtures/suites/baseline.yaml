@@ -1,0 +1,17 @@
+apiVersion: anvil.dev/v1alpha1
+kind: RegressionSuite
+name: offline-foundations
+cases:
+  - id: checksum-only
+    recording:
+      file: recording.json
+      sha256: b3d140f10df3e30d29ea4f8a969b64a8c032a40efe59b9419637bcc68e45788d
+    agent:
+      image: example/agent@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      entrypoint: example.agent:run
+      adapter: google-adk
+      adapter_version: 1.0.0
+    seed: 0
+    assertions:
+      - kind: outcome
+        expected: succeeded
