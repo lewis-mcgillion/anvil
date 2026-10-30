@@ -22,7 +22,9 @@ class RunRepository:
     async def get(self, project_id: UUID, run_id: UUID) -> dict | None:
         async with project_connection(self.engine, project_id) as connection:
             row = (await connection.execute(text("""
-                SELECT id, project_id, execution_outcome, capture_status FROM runs
+                SELECT id, project_id, execution_outcome, capture_status,
+                       agent_name, adapter, adapter_version, trace_id, started_at,
+                       finished_at, created_at FROM runs
                 WHERE project_id = :project AND id = :run
             """), {"project": project_id, "run": run_id})).mappings().first()
             return dict(row) if row else None

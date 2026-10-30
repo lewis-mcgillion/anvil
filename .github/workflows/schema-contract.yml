@@ -1,7 +1,7 @@
 name: Schema contract
 
 # Cross-language contract tests for the frozen v1 event and recording
-# schemas (ANVIL-003). Go, Python and TypeScript validators must agree on
+# schemas (ANVIL-003). Python and TypeScript validators must agree on
 # the shared positive and negative fixtures in fixtures/schema/v1.
 
 on:
@@ -9,40 +9,23 @@ on:
     paths:
       - "schemas/**"
       - "fixtures/**"
-      - "internal/events/**"
+      - "server/anvil_server/events.py"
       - "sdk/python/**"
       - "web/schemas/**"
-      - "go.mod"
-      - "go.sum"
-      - "vendor/**"
       - ".github/workflows/schema-contract.yml"
   pull_request:
     paths:
       - "schemas/**"
       - "fixtures/**"
-      - "internal/events/**"
+      - "server/anvil_server/events.py"
       - "sdk/python/**"
       - "web/schemas/**"
-      - "go.mod"
-      - "go.sum"
-      - "vendor/**"
       - ".github/workflows/schema-contract.yml"
 
 permissions:
   contents: read
 
 jobs:
-  go:
-    name: Go validator
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-      # Modules are vendored; tests run hermetically with -mod=vendor.
-      - run: go test -mod=vendor ./...
-
   python:
     name: Python validator
     runs-on: ubuntu-latest

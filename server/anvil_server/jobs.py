@@ -39,11 +39,45 @@ class JobQueue:
                   error = NULL, finished_at = NULL
                 WHERE id = (
                   SELECT id FROM jobs WHERE project_id = :project AND attempts < max_attempts
-                  AND (status = 'queued' OR (status IN ('running','cancelling')
+                  AND (status = 'queued' OR (status = 'running'
                     AND lease_expires_at < clock_timestamp()))
                   ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
                 ) RETURNING id, status, attempts
             """), {"project": project_id, "token": lease_token,
+                   "seconds": self.lease_duration.total_seconds()})).mappings().first()
+            return dict(row) if row else None
+
+    async def acquire_kind(self, project_id: UUID, lease_token: UUID, kind: str):
+        async with project_connection(self.engine, project_id) as connection:
+            row = (await connection.execute(text("""
+                UPDATE jobs SET status = 'running', attempts = attempts + 1,
+                  lease_token = :token, leased_at = clock_timestamp(),
+                  heartbeat_at = clock_timestamp(),
+                  lease_expires_at = clock_timestamp() + (:seconds * interval '1 second'),
+                  error = NULL, finished_at = NULL
+                WHERE id = (
+                  SELECT id FROM jobs WHERE project_id = :project AND kind = :kind
+                  AND attempts < max_attempts AND status = 'queued'
+                  ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
+                ) RETURNING id, status, attempts
+            """), {"project": project_id, "token": lease_token, "kind": kind,
+                   "seconds": self.lease_duration.total_seconds()})).mappings().first()
+            return dict(row) if row else None
+
+    async def acquire_job(self, project_id: UUID, job_id: UUID, lease_token: UUID):
+        async with project_connection(self.engine, project_id) as connection:
+            row = (await connection.execute(text("""
+                UPDATE jobs SET status = 'running', attempts = attempts + 1,
+                  lease_token = :token, leased_at = clock_timestamp(),
+                  heartbeat_at = clock_timestamp(),
+                  lease_expires_at = clock_timestamp() + (:seconds * interval '1 second'),
+                  error = NULL, finished_at = NULL
+                WHERE id = :job AND project_id = :project
+                  AND (status = 'queued' OR (status = 'running'
+                    AND lease_expires_at < clock_timestamp()))
+                  AND attempts < max_attempts
+                RETURNING id, status, attempts
+            """), {"project": project_id, "job": job_id, "token": lease_token,
                    "seconds": self.lease_duration.total_seconds()})).mappings().first()
             return dict(row) if row else None
 
@@ -59,16 +93,18 @@ class JobQueue:
         await self._leased_update(project_id, job_id, lease_token, """
             status = :status, outcome = :status, finished_at = clock_timestamp(),
             lease_token = NULL, lease_expires_at = NULL, heartbeat_at = NULL
-        """, {"status": status})
+        """, {"status": status}, allowed_states=("running",) if status != "cancelled" else ("running", "cancelling"))
 
-    async def _leased_update(self, project_id, job_id, lease_token, updates, extra):
+    async def _leased_update(self, project_id, job_id, lease_token, updates, extra,
+                             allowed_states=("running",)):
         async with project_connection(self.engine, project_id) as connection:
             result = await connection.execute(text(f"""
                 UPDATE jobs SET {updates}
                 WHERE project_id = :project AND id = :id AND lease_token = :token
-                  AND status IN ('running', 'cancelling')
+                  AND status = ANY(:allowed_states)
                   AND lease_expires_at > clock_timestamp()
-            """), {"project": project_id, "id": job_id, "token": lease_token, **extra})
+            """), {"project": project_id, "id": job_id, "token": lease_token,
+                   "allowed_states": list(allowed_states), **extra})
             if result.rowcount != 1:
                 raise LeaseLost("Lease expired or does not belong to this worker")
 
@@ -76,10 +112,13 @@ class JobQueue:
         async with project_connection(self.engine, project_id) as connection:
             result = await connection.execute(text("""
                 UPDATE jobs
-                SET status = CASE WHEN attempts < max_attempts THEN 'queued' ELSE 'failed' END,
-                    outcome = CASE WHEN attempts < max_attempts THEN 'interrupted' ELSE 'failed' END,
+                SET status = CASE WHEN status = 'cancelling' THEN 'cancelled'
+                                  WHEN attempts < max_attempts THEN 'queued' ELSE 'failed' END,
+                    outcome = CASE WHEN status = 'cancelling' THEN 'cancelled'
+                                   WHEN attempts < max_attempts THEN 'interrupted' ELSE 'failed' END,
                     error = 'worker lease expired',
-                    finished_at = CASE WHEN attempts < max_attempts THEN NULL ELSE clock_timestamp() END,
+                    finished_at = CASE WHEN status <> 'cancelling' AND attempts < max_attempts
+                                       THEN NULL ELSE clock_timestamp() END,
                     lease_token = NULL, lease_expires_at = NULL, heartbeat_at = NULL
                 WHERE project_id = :project AND status IN ('running', 'cancelling')
                   AND lease_expires_at < clock_timestamp()
@@ -98,6 +137,13 @@ class JobQueue:
 
     async def cancel(self, project_id: UUID, job_id: UUID) -> dict | None:
         async with project_connection(self.engine, project_id) as connection:
+            existing = (await connection.execute(text("""
+                SELECT status FROM jobs WHERE project_id = :project AND id = :job FOR UPDATE
+            """), {"project": project_id, "job": job_id})).scalar_one_or_none()
+            if existing in {"succeeded", "failed"}:
+                raise LeaseLost("Finished jobs cannot be cancelled")
+            if existing is None:
+                return None
             row = (await connection.execute(text("""
                 UPDATE jobs SET
                   status = CASE WHEN status = 'queued' THEN 'cancelled'

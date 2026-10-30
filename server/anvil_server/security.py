@@ -14,16 +14,22 @@ class AccessDenied(ValueError):
     pass
 
 
+class Unauthenticated(AccessDenied):
+    pass
+
+
 async def authorize(engine: AsyncEngine, request: Request, project_id: UUID, required: str) -> None:
     try:
         token = bearer_token(request.headers.get("authorization"))
     except ValueError as error:
-        raise AccessDenied("Missing or invalid credentials") from error
+        raise Unauthenticated("Missing or invalid credentials") from error
     async with project_connection(engine, project_id) as connection:
         row = (await connection.execute(text("""
             SELECT scopes FROM api_keys WHERE project_id = :project
               AND key_hash = :hash AND revoked_at IS NULL
               AND (expires_at IS NULL OR expires_at > clock_timestamp())
         """), {"project": project_id, "hash": key_hash(token)})).first()
-    if row is None or required not in row.scopes:
+    if row is None:
+        raise Unauthenticated("Missing or invalid credentials")
+    if required not in row.scopes:
         raise AccessDenied("Permission denied")
