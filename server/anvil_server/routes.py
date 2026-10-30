@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
 from .capture import CaptureConflict, create_run, ingest, seal_run, queue_seal
-from .auth import issue_key, key_hash, validate_scopes
+from .auth import bearer_token, issue_key, key_hash, validate_scopes
 from .bundles import MAX_ARTIFACT, MAX_BUNDLE, export_bundle, validate_recording_archive
 from .identifiers import new_uuid7
 from .database import project_connection
@@ -137,6 +137,13 @@ class AgentVersionCreate(BaseModel):
     entrypoint: str = Field(min_length=1, max_length=512)
     adapter: str = Field(min_length=1, max_length=64)
     adapter_version: str = Field(min_length=1, max_length=64)
+
+
+def require_idempotency_key(request: Request) -> str | None:
+    key = request.headers.get("Idempotency-Key")
+    if key is None or re.fullmatch(r"[A-Za-z0-9_-]{8,128}", key) is None:
+        return None
+    return key
 
 
 @router.post("/projects/{project_id}/agent-versions", status_code=201)
@@ -264,6 +271,9 @@ async def create_api_key(request: Request, project_id: UUID, payload: ApiKeyCrea
     engine, error = await scoped(request, project_id, "admin")
     if error is not None:
         return error
+    idempotency_key = require_idempotency_key(request)
+    if idempotency_key is None:
+        return failure(request, 400, "invalid_request")
     try:
         validate_scopes(payload.scopes)
     except ValueError:
@@ -273,13 +283,25 @@ async def create_api_key(request: Request, project_id: UUID, payload: ApiKeyCrea
         return failure(request, 400, "invalid_request")
     secret = issue_key()
     key_id = new_uuid7()
+    digest = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
     async with project_connection(engine, project_id) as connection:
+        await connection.execute(text("""
+            SELECT pg_advisory_xact_lock(hashtextextended(:lock, 0))
+        """), {"lock": str(project_id) + ":" + idempotency_key})
+        previous = (await connection.execute(text("""
+            SELECT request_hash, response FROM idempotency_keys
+            WHERE project_id = :project AND key = :key
+        """), {"project": project_id, "key": idempotency_key})).mappings().first()
+        if previous is not None:
+            if previous["request_hash"] != digest:
+                return failure(request, 409, "conflict")
+            return previous["response"]
         principal = (await connection.execute(text("""
             SELECT principal_id, organization_id FROM api_keys
             WHERE project_id = :project AND key_hash = :hash AND revoked_at IS NULL
               AND (expires_at IS NULL OR expires_at > clock_timestamp())
         """), {"project": project_id,
-               "hash": key_hash(request.headers["authorization"].split()[1])})).mappings().first()
+               "hash": key_hash(bearer_token(request.headers.get("authorization")))})).mappings().first()
         if principal is None:
             return failure(request, 403, "forbidden")
         existing = (await connection.execute(text("""
@@ -297,8 +319,14 @@ async def create_api_key(request: Request, project_id: UUID, payload: ApiKeyCrea
                "project": project_id, "principal": principal["principal_id"],
                "name": payload.name, "prefix": secret[:16], "hash": key_hash(secret),
                "scopes": payload.scopes, "expires": payload.expires_at})).scalar_one()
-    return {"id": str(key_id), "name": payload.name, "scopes": payload.scopes,
-            "secret": secret, "created_at": row.isoformat()}
+        response = {"id": str(key_id), "name": payload.name, "scopes": payload.scopes,
+                    "secret": secret, "created_at": row.isoformat()}
+        await connection.execute(text("""
+            INSERT INTO idempotency_keys(project_id, key, request_hash, status_code, response)
+            VALUES (:project, :key, :hash, 201, CAST(:response AS jsonb))
+        """), {"project": project_id, "key": idempotency_key, "hash": digest,
+               "response": json.dumps(response)})
+    return response
 
 
 @router.delete("/projects/{project_id}/keys/{key_id}", status_code=204)
@@ -854,11 +882,26 @@ async def request_deletion(request: Request, project_id: UUID, payload: Deletion
     engine, error = await scoped(request, project_id, "admin")
     if error is not None:
         return error
+    idempotency_key = require_idempotency_key(request)
+    if idempotency_key is None:
+        return failure(request, 400, "invalid_request")
     if payload.target_kind == "suite":
         return failure(request, 400, "invalid_request")
     table = "runs" if payload.target_kind == "run" else "recordings"
     deletion_id, job_id = new_uuid7(), new_uuid7()
+    digest = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
     async with project_connection(engine, project_id) as connection:
+        await connection.execute(text("""
+            SELECT pg_advisory_xact_lock(hashtextextended(:lock, 0))
+        """), {"lock": str(project_id) + ":" + idempotency_key})
+        previous = (await connection.execute(text("""
+            SELECT request_hash, response FROM idempotency_keys
+            WHERE project_id = :project AND key = :key
+        """), {"project": project_id, "key": idempotency_key})).mappings().first()
+        if previous is not None:
+            if previous["request_hash"] != digest:
+                return failure(request, 409, "conflict")
+            return previous["response"]
         exists = (await connection.execute(text(f"""
             SELECT id FROM {table} WHERE project_id = :project AND id = :target
         """), {"project": project_id, "target": payload.target_id})).scalar_one_or_none()
@@ -880,8 +923,14 @@ async def request_deletion(request: Request, project_id: UUID, payload: Deletion
                 VALUES (:id, :project, :kind, :target, :job)
             """), {"id": deletion_id, "project": project_id, "kind": payload.target_kind,
                    "target": payload.target_id, "job": job_id})
-    return {"job_id": str(job_id), "job_url": f"/v1/projects/{project_id}/jobs/{job_id}",
-            "status": "queued", "deletion_id": str(deletion_id)}
+        response = {"job_id": str(job_id), "job_url": f"/v1/projects/{project_id}/jobs/{job_id}",
+                    "status": "queued", "deletion_id": str(deletion_id)}
+        await connection.execute(text("""
+            INSERT INTO idempotency_keys(project_id, key, request_hash, status_code, response)
+            VALUES (:project, :key, :hash, 202, CAST(:response AS jsonb))
+        """), {"project": project_id, "key": idempotency_key, "hash": digest,
+               "response": json.dumps(response)})
+    return response
 
 
 @router.get("/projects/{project_id}/deletions/{deletion_id}")
