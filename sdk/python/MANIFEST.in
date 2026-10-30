@@ -1,0 +1,2 @@
+include _build.py
+recursive-include anvil_schema/schemas *.schema.json

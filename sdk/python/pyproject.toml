@@ -5,9 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "anvil-schema"
 version = "1.0.0"
-description = "Validators for Anvil's frozen v1 event and recording JSON Schemas"
-readme = { text = "See schemas/README.md at the repository root.", content-type = "text/plain" }
-requires-python = ">=3.10"
+description = "Typed Anvil capture SDK and frozen v1 JSON Schema validators"
+readme = { text = "Capture-only Python SDK. See docs/sdk.md and schemas/README.md in the Anvil repository.", content-type = "text/plain" }
+requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 dependencies = [
     "jsonschema==4.25.0",
@@ -19,7 +19,16 @@ test = [
 ]
 
 [tool.setuptools]
-packages = ["anvil_schema", "anvil"]
+packages = ["anvil", "anvil_schema"]
+py-modules = ["_build"]
+
+[tool.setuptools.cmdclass]
+build_py = "_build.BuildPy"
+sdist = "_build.SDist"
+
+[tool.setuptools.package-data]
+anvil = ["py.typed"]
+anvil_schema = ["py.typed", "schemas/*.schema.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
