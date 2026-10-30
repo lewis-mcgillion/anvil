@@ -1,0 +1,486 @@
+{
+  "$defs": {
+    "EmptyFault": {
+      "additionalProperties": false,
+      "properties": {
+        "fault_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+          "title": "Fault Id",
+          "type": "string"
+        },
+        "target_invocation_path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.:-]*(/[A-Za-z0-9_][A-Za-z0-9_.:-]*)*$",
+          "title": "Target Invocation Path",
+          "type": "string"
+        },
+        "fault_type": {
+          "const": "tool.empty_response",
+          "title": "Fault Type",
+          "type": "string"
+        },
+        "parameters": {
+          "$ref": "#/$defs/EmptyParameters"
+        }
+      },
+      "required": [
+        "fault_id",
+        "target_invocation_path",
+        "fault_type"
+      ],
+      "title": "EmptyFault",
+      "type": "object"
+    },
+    "EmptyParameters": {
+      "additionalProperties": false,
+      "properties": {
+        "simulated_latency_ms": {
+          "default": 0,
+          "maximum": 120000,
+          "minimum": 0,
+          "title": "Simulated Latency Ms",
+          "type": "integer"
+        },
+        "jitter_ms": {
+          "default": 0,
+          "maximum": 120000,
+          "minimum": 0,
+          "title": "Jitter Ms",
+          "type": "integer"
+        },
+        "response": {
+          "default": "null",
+          "enum": [
+            "null",
+            "object",
+            "array",
+            "text"
+          ],
+          "title": "Response",
+          "type": "string"
+        }
+      },
+      "title": "EmptyParameters",
+      "type": "object"
+    },
+    "ExceptionFault": {
+      "additionalProperties": false,
+      "properties": {
+        "fault_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+          "title": "Fault Id",
+          "type": "string"
+        },
+        "target_invocation_path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.:-]*(/[A-Za-z0-9_][A-Za-z0-9_.:-]*)*$",
+          "title": "Target Invocation Path",
+          "type": "string"
+        },
+        "fault_type": {
+          "const": "tool.exception",
+          "title": "Fault Type",
+          "type": "string"
+        },
+        "parameters": {
+          "$ref": "#/$defs/ExceptionParameters"
+        }
+      },
+      "required": [
+        "fault_id",
+        "target_invocation_path",
+        "fault_type",
+        "parameters"
+      ],
+      "title": "ExceptionFault",
+      "type": "object"
+    },
+    "ExceptionParameters": {
+      "additionalProperties": false,
+      "properties": {
+        "simulated_latency_ms": {
+          "default": 0,
+          "maximum": 120000,
+          "minimum": 0,
+          "title": "Simulated Latency Ms",
+          "type": "integer"
+        },
+        "jitter_ms": {
+          "default": 0,
+          "maximum": 120000,
+          "minimum": 0,
+          "title": "Jitter Ms",
+          "type": "integer"
+        },
+        "error_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+          "title": "Error Type",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 4096,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "error_type",
+        "message"
+      ],
+      "title": "ExceptionParameters",
+      "type": "object"
+    },
+    "OfflineJSON": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/OfflineJSON"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/OfflineJSON"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "Parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "simulated_latency_ms": {
+          "default": 0,
+          "maximum": 120000,
+          "minimum": 0,
+          "title": "Simulated Latency Ms",
+          "type": "integer"
+        },
+        "jitter_ms": {
+          "default": 0,
+          "maximum": 120000,
+          "minimum": 0,
+          "title": "Jitter Ms",
+          "type": "integer"
+        }
+      },
+      "title": "Parameters",
+      "type": "object"
+    },
+    "PatchFault": {
+      "additionalProperties": false,
+      "properties": {
+        "fault_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+          "title": "Fault Id",
+          "type": "string"
+        },
+        "target_invocation_path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.:-]*(/[A-Za-z0-9_][A-Za-z0-9_.:-]*)*$",
+          "title": "Target Invocation Path",
+          "type": "string"
+        },
+        "fault_type": {
+          "const": "json_pointer.patch",
+          "title": "Fault Type",
+          "type": "string"
+        },
+        "parameters": {
+          "$ref": "#/$defs/PatchParameters"
+        }
+      },
+      "required": [
+        "fault_id",
+        "target_invocation_path",
+        "fault_type",
+        "parameters"
+      ],
+      "title": "PatchFault",
+      "type": "object"
+    },
+    "PatchParameters": {
+      "additionalProperties": false,
+      "properties": {
+        "simulated_latency_ms": {
+          "default": 0,
+          "maximum": 120000,
+          "minimum": 0,
+          "title": "Simulated Latency Ms",
+          "type": "integer"
+        },
+        "jitter_ms": {
+          "default": 0,
+          "maximum": 120000,
+          "minimum": 0,
+          "title": "Jitter Ms",
+          "type": "integer"
+        },
+        "pointer": {
+          "maxLength": 1024,
+          "title": "Pointer",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/OfflineJSON"
+        }
+      },
+      "required": [
+        "pointer",
+        "value"
+      ],
+      "title": "PatchParameters",
+      "type": "object"
+    },
+    "TextFault": {
+      "additionalProperties": false,
+      "properties": {
+        "fault_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+          "title": "Fault Id",
+          "type": "string"
+        },
+        "target_invocation_path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.:-]*(/[A-Za-z0-9_][A-Za-z0-9_.:-]*)*$",
+          "title": "Target Invocation Path",
+          "type": "string"
+        },
+        "fault_type": {
+          "enum": [
+            "tool.malformed_response",
+            "prompt.injection"
+          ],
+          "title": "Fault Type",
+          "type": "string"
+        },
+        "parameters": {
+          "$ref": "#/$defs/TextParameters"
+        }
+      },
+      "required": [
+        "fault_id",
+        "target_invocation_path",
+        "fault_type",
+        "parameters"
+      ],
+      "title": "TextFault",
+      "type": "object"
+    },
+    "TextParameters": {
+      "additionalProperties": false,
+      "properties": {
+        "simulated_latency_ms": {
+          "default": 0,
+          "maximum": 120000,
+          "minimum": 0,
+          "title": "Simulated Latency Ms",
+          "type": "integer"
+        },
+        "jitter_ms": {
+          "default": 0,
+          "maximum": 120000,
+          "minimum": 0,
+          "title": "Jitter Ms",
+          "type": "integer"
+        },
+        "text": {
+          "maxLength": 262144,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "TextParameters",
+      "type": "object"
+    },
+    "TimeoutFault": {
+      "additionalProperties": false,
+      "properties": {
+        "fault_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+          "title": "Fault Id",
+          "type": "string"
+        },
+        "target_invocation_path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.:-]*(/[A-Za-z0-9_][A-Za-z0-9_.:-]*)*$",
+          "title": "Target Invocation Path",
+          "type": "string"
+        },
+        "fault_type": {
+          "const": "tool.timeout",
+          "title": "Fault Type",
+          "type": "string"
+        },
+        "parameters": {
+          "$ref": "#/$defs/Parameters"
+        }
+      },
+      "required": [
+        "fault_id",
+        "target_invocation_path",
+        "fault_type",
+        "parameters"
+      ],
+      "title": "TimeoutFault",
+      "type": "object"
+    },
+    "TruncateFault": {
+      "additionalProperties": false,
+      "properties": {
+        "fault_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+          "title": "Fault Id",
+          "type": "string"
+        },
+        "target_invocation_path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.:-]*(/[A-Za-z0-9_][A-Za-z0-9_.:-]*)*$",
+          "title": "Target Invocation Path",
+          "type": "string"
+        },
+        "fault_type": {
+          "const": "stream.truncate",
+          "title": "Fault Type",
+          "type": "string"
+        },
+        "parameters": {
+          "$ref": "#/$defs/TruncateParameters"
+        }
+      },
+      "required": [
+        "fault_id",
+        "target_invocation_path",
+        "fault_type",
+        "parameters"
+      ],
+      "title": "TruncateFault",
+      "type": "object"
+    },
+    "TruncateParameters": {
+      "additionalProperties": false,
+      "properties": {
+        "simulated_latency_ms": {
+          "default": 0,
+          "maximum": 120000,
+          "minimum": 0,
+          "title": "Simulated Latency Ms",
+          "type": "integer"
+        },
+        "jitter_ms": {
+          "default": 0,
+          "maximum": 120000,
+          "minimum": 0,
+          "title": "Jitter Ms",
+          "type": "integer"
+        },
+        "max_bytes": {
+          "maximum": 262144,
+          "minimum": 0,
+          "title": "Max Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_bytes"
+      ],
+      "title": "TruncateParameters",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "fault_plan_version": {
+      "const": "1",
+      "title": "Fault Plan Version",
+      "type": "string"
+    },
+    "faults": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "json_pointer.patch": "#/$defs/PatchFault",
+            "prompt.injection": "#/$defs/TextFault",
+            "stream.truncate": "#/$defs/TruncateFault",
+            "tool.empty_response": "#/$defs/EmptyFault",
+            "tool.exception": "#/$defs/ExceptionFault",
+            "tool.malformed_response": "#/$defs/TextFault",
+            "tool.timeout": "#/$defs/TimeoutFault"
+          },
+          "propertyName": "fault_type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/ExceptionFault"
+          },
+          {
+            "$ref": "#/$defs/TimeoutFault"
+          },
+          {
+            "$ref": "#/$defs/EmptyFault"
+          },
+          {
+            "$ref": "#/$defs/PatchFault"
+          },
+          {
+            "$ref": "#/$defs/TruncateFault"
+          },
+          {
+            "$ref": "#/$defs/TextFault"
+          }
+        ]
+      },
+      "maxItems": 100,
+      "title": "Faults",
+      "type": "array"
+    }
+  },
+  "required": [
+    "fault_plan_version",
+    "faults"
+  ],
+  "title": "FaultPlan",
+  "type": "object"
+}
