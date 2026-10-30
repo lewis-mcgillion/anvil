@@ -1,2 +1,3 @@
-# Runtime dependencies are intentionally empty in the foundation SDK.
-# Keep this file committed so dependency additions are explicit and reviewable.
+# Direct runtime dependency pinned by pyproject.toml.
+# This is not a transitive resolver lock; install with the package metadata.
+jsonschema==4.25.0

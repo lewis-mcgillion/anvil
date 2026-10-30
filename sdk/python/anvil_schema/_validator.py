@@ -25,7 +25,9 @@ SCHEMA_NAMES: tuple[str, ...] = (
 )
 
 _BASE_URI = "https://anvil.dev/schemas/v1/"
-_SCHEMA_DIR = Path(__file__).resolve().parents[3] / "schemas" / "v1"
+_SCHEMA_DIR = Path(__file__).resolve().parent / "schemas"
+if not _SCHEMA_DIR.is_dir():
+    _SCHEMA_DIR = Path(__file__).resolve().parents[3] / "schemas" / "v1"
 
 
 class ValidationError(Exception):
