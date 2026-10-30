@@ -11,9 +11,8 @@ must be supplied as an independent infrastructure status, not converted to pass.
 
 This package depends on the shared `anvil_server.canonical` implementation from
 commit `e188862` and on the existing local `anvil-schema` package in `sdk/python`.
-No third-party canonicalization library is needed. Deployment must make that
-schema package and its frozen repository schemas available. For source-checkout
-checks, set `PYTHONPATH=.:../sdk/python` when running from `server/`.
+No third-party canonicalization library is needed. The server package declares that dependency, and repository CI installs the
+local SDK distribution before the server so its frozen schemas are available.
 
 The library addresses ANVIL-043 (#52), ANVIL-044 (#53), ANVIL-045 (#54), and
 ANVIL-048 (#57). REST comparison jobs, persistence, pagination, CLI wiring (#55),
