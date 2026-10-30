@@ -2,7 +2,7 @@
 
 The capture-only SDK ships alongside the frozen validators in the
 `anvil-schema` distribution. Install with `pip install ./sdk/python`, or
-`pip install -e './sdk/python[test]'` for development. Python 3.12 or newer
+`pip install -e './sdk/python[test]'` for development. Python 3.11 or newer
 is required. `anvil` and `anvil_schema` ship PEP 561 type markers. Importing
 the package requires no credentials and starts no threads; constructing a
 client starts one exporter worker.

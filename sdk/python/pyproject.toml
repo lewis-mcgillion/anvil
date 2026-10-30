@@ -7,7 +7,7 @@ name = "anvil-schema"
 version = "1.0.0"
 description = "Typed Anvil capture SDK and frozen v1 JSON Schema validators"
 readme = { text = "Capture-only Python SDK. See docs/sdk.md and schemas/README.md in the Anvil repository.", content-type = "text/plain" }
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 dependencies = [
     "jsonschema==4.25.0",
