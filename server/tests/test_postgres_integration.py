@@ -601,9 +601,10 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
         assert (await client.delete(f"/v1/projects/{PROJECT}/keys/{created.json()['id']}", headers=headers)).status_code == 204
         deletion_url = f"/v1/projects/{PROJECT}/deletions"
         deletion_payload = {"target_kind": "recording", "target_id": sealed["recording_id"]}
-        deletion = await client.post(deletion_url, json=deletion_payload, headers=headers)
+        deletion_headers = {**headers, "Idempotency-Key": str(new_uuid7())}
+        deletion = await client.post(deletion_url, json=deletion_payload, headers=deletion_headers)
         assert deletion.status_code == 202, deletion.text
-        duplicate = await client.post(deletion_url, json=deletion_payload, headers=headers)
+        duplicate = await client.post(deletion_url, json=deletion_payload, headers=deletion_headers)
         assert duplicate.status_code == 202
         assert duplicate.json()["job_id"] == deletion.json()["job_id"]
         status = await client.get(f"{deletion_url}/{deletion.json()['deletion_id']}", headers=headers)
