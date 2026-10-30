@@ -1,0 +1,17 @@
+{
+  "fault_plan_version": "1",
+  "faults": [
+    {
+      "fault_id": "lookup-transient-error",
+      "fault_type": "tool.exception",
+      "target_invocation_path": "root/lookup/attempt-1",
+      "parameters": {
+        "error_type": "unavailable",
+        "message": "Simulated transient tool failure",
+        "retryable": true,
+        "simulated_latency_ms": 10,
+        "jitter_ms": 5
+      }
+    }
+  ]
+}

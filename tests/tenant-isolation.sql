@@ -5,6 +5,7 @@ DO $$ BEGIN
 END $$;
 GRANT USAGE ON SCHEMA public TO anvil_test_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anvil_test_app;
+GRANT anvil_test_app TO CURRENT_USER;
 
 INSERT INTO organizations (id, slug, name)
 VALUES ('0199b167-0000-7000-8000-000000000001', 'tenant-test', 'Tenant test');

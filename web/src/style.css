@@ -1,0 +1,17 @@
+:root { font-family: system-ui, sans-serif; color: #172331; background: #f5f7fa; line-height: 1.6; }
+body { margin: 0; }
+header, .project-switcher, main { max-width: 70rem; margin: auto; padding: 1.25rem; }
+header { display: flex; justify-content: space-between; align-items: center; }
+main { background: white; min-height: 50vh; }
+a { color: #174e97; }
+button, input, select { font: inherit; padding: .5rem; border: 1px solid #53667c; border-radius: .25rem; max-width: 100%; }
+button { cursor: pointer; background: #edf2f8; color: #172331; }
+button:disabled { cursor: wait; }
+form { display: grid; gap: .75rem; max-width: 30rem; }
+.project-switcher { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+:focus-visible { outline: 3px solid #935500; outline-offset: 3px; }
+h1:focus, main:focus { outline: 2px solid #935500; outline-offset: 3px; }
+[role="alert"] { border-left: 4px solid #a12020; padding: 1rem; }
+code { overflow-wrap: anywhere; }
+.skip-link { position: absolute; left: 1rem; top: -5rem; padding: .5rem; background: white; z-index: 1; }
+.skip-link:focus { top: .5rem; }

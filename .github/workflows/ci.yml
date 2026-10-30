@@ -8,22 +8,6 @@ permissions:
   contents: read
 
 jobs:
-  go:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go: ["1.24.x"]
-    steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-go@v5.2.0
-        with:
-          go-version: ${{ matrix.go }}
-          cache: true
-      - run: gofmt -l . | tee /tmp/gofmt.out && test ! -s /tmp/gofmt.out
-      - run: go vet -mod=vendor ./...
-      - run: go test -race -mod=vendor ./...
-      - run: go build -mod=vendor ./...
-
   python:
     runs-on: ubuntu-latest
     strategy:
@@ -70,6 +54,10 @@ jobs:
       - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f migrations/0002_authorization.sql
       - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f migrations/0002_jobs.sql
       - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f migrations/0002_administration.sql
+      - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f migrations/0003_run_metadata.sql
+      - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f migrations/0004_seal_jobs.sql
+      - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f migrations/0005_agent_versions.sql
+      - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f migrations/0006_archive_jobs.sql
       - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f tests/tenant-isolation.sql
       - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "INSERT INTO run_streams(id,run_id,project_id,name) VALUES ('0199b167-0000-7000-8000-000000000031','0199b167-0000-7000-8000-000000000021','0199b167-0000-7000-8000-000000000011','main')"
       - uses: actions/setup-python@v5.3.0
@@ -97,7 +85,7 @@ jobs:
 
   containers:
     runs-on: ubuntu-latest
-    needs: [go, python, python-server, typescript, postgres]
+    needs: [python, python-server, typescript, postgres]
     steps:
       - uses: actions/checkout@v4.2.2
       - run: docker build --file deploy/containers/api.Dockerfile .

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anvil-google-adk"
+version = "0.1.0"
+description = "Pinned Google ADK interception for Anvil"
+requires-python = ">=3.12,<3.13"
+license = "Apache-2.0"
+dependencies = ["google-adk==2.13.0"]
+
+[project.optional-dependencies]
+test = ["pytest==8.3.5", "pytest-asyncio==0.25.3"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]

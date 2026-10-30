@@ -3,13 +3,28 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Anvil web workspace. Currently only contract type generation.",
+  "description": "Accessible Anvil investigation dashboard.",
   "scripts": {
     "generate": "openapi-typescript ../api/openapi.yaml -o ./src/api-types.ts",
-    "build": "tsc --noEmit"
+    "dev": "vite --host 127.0.0.1",
+    "build": "npm run generate && tsc --noEmit && vite build",
+    "test": "playwright test",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router-dom": "7.18.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
+    "@playwright/test": "1.64.1",
+    "@types/react": "19.0.8",
+    "@types/react-dom": "19.0.3",
+    "@vitejs/plugin-react": "4.7.0",
     "openapi-typescript": "7.6.1",
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "vite": "6.4.5"
   }
 }

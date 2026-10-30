@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "adapter": "google-adk",
+  "state": {
+    "counter": 4,
+    "preferences": {
+      "locale": "en",
+      "enabled": true
+    }
+  }
+}
