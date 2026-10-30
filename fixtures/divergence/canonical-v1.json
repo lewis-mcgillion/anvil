@@ -1,0 +1,17 @@
+[
+  {
+    "name": "ecmascript-numbers",
+    "value": [333333333.33333329, 1e30, 4.50, 2e-3, 0.000000000000000000000000001, -0.0, 1e-6, 1e-7, 1e20, 1e21],
+    "canonical": "[333333333.3333333,1e+30,4.5,0.002,1e-27,0,0.000001,1e-7,100000000000000000000,1e+21]"
+  },
+  {
+    "name": "utf16-key-order",
+    "value": {"\u20ac": "Euro Sign", "\r": "Carriage Return", "\ufb33": "Hebrew Letter Dalet With Dagesh", "1": "One", "\ud83d\ude00": "Emoji: Grinning Face", "\u0080": "Control", "\u00f6": "Latin Small Letter O With Diaeresis"},
+    "canonical": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\u0080\":\"Control\",\"\u00f6\":\"Latin Small Letter O With Diaeresis\",\"\u20ac\":\"Euro Sign\",\"\ud83d\ude00\":\"Emoji: Grinning Face\",\"\ufb33\":\"Hebrew Letter Dalet With Dagesh\"}"
+  },
+  {
+    "name": "strings-not-unicode-normalized",
+    "value": {"e\u0301": "\u00e9", "a": "\"\\\n\t\u000f", "array": [null, true, false]},
+    "canonical": "{\"a\":\"\\\"\\\\\\n\\t\\u000f\",\"array\":[null,true,false],\"e\u0301\":\"\u00e9\"}"
+  }
+]
