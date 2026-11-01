@@ -231,3 +231,30 @@ test("empty keys do not submit and keys are never sent through redirects", async
   await expect(page.getByRole("alert")).toContainText("Projects could not be loaded");
   expect(redirected).toBe(false);
 });
+
+test("a later load does not steal focus from the reader", async ({ page }) => {
+  // Regression: the heading claimed focus every time it mounted, so a project
+  // page re-rendering after a later page of projects arrived yanked focus back
+  // from the control the reader was actually using.
+  await page.route("**/v1/projects?*", (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    return route.fulfill({ json: query.has("cursor")
+      ? { items: [second], next_cursor: "second-cursor" }
+      : { items: [first], next_cursor: "first-cursor" },
+    });
+  });
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Alpha", exact: true })).toBeFocused();
+
+  const selector = page.getByLabel("Project", { exact: true });
+  await selector.focus();
+  // Dispatched so the load starts without moving focus itself.
+  await page.getByRole("button", { name: "Load more projects" }).dispatchEvent("click");
+
+  // The reader keeps focus once the project page renders again.
+  await expect(page.locator("option")).toHaveCount(3);
+  await expect(selector).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Alpha", exact: true })).not.toBeFocused();
+});
