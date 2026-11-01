@@ -13,12 +13,26 @@ from __future__ import annotations
 from datetime import timedelta
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from . import audit
 from .database import project_connection
 from .identifiers import new_uuid7
 from .jobs import JobQueue
+
+
+def _in(statement: str, *names: str):
+    """Bind id lists by expansion, for statements whose lists are non-empty.
+
+    A deletion routinely has an empty side -- deleting a recording deletes no
+    runs -- and neither way of passing an empty list survives the round trip:
+    an array parameter carries no element type, and an expanded empty list
+    renders as an untyped NULL that Postgres will not compare against a uuid.
+    So an empty list never reaches SQL; every caller skips the statement
+    instead, which is also the statement that could not have matched anything.
+    """
+    return text(statement).bindparams(
+        *(bindparam(name, expanding=True) for name in names))
 
 
 class DeletionError(ValueError):
@@ -50,21 +64,34 @@ async def plan(connection, project_id: UUID, target_kind: str, target_id: UUID) 
         # exists, and a worker must not invent a meaning for one.
         raise DeletionError("Unsupported deletion target")
 
-    comparisons = [row[0] for row in await connection.execute(text("""
-        SELECT id FROM comparisons
-        WHERE project_id = :project
-          AND (baseline_recording_id = ANY(CAST(:recordings AS uuid[])) OR candidate_run_id = ANY(CAST(:runs AS uuid[])))
-    """), {"project": project_id, "recordings": recordings, "runs": runs})]
-    exports = [row[0] for row in await connection.execute(text("""
-        SELECT job_id FROM archive_exports
-        WHERE project_id = :project AND recording_id = ANY(CAST(:recordings AS uuid[]))
-    """), {"project": project_id, "recordings": recordings})]
-    size = (await connection.execute(text("""
-        SELECT coalesce(sum(octet_length(payload::text)), 0)
-             + coalesce((SELECT sum(size_bytes) FROM artifacts
-                         WHERE project_id = :project AND run_id = ANY(CAST(:runs AS uuid[]))), 0)
-        FROM events WHERE project_id = :project AND run_id = ANY(CAST(:runs AS uuid[]))
-    """), {"project": project_id, "runs": runs})).scalar_one()
+    comparisons: list[UUID] = []
+    if recordings:
+        comparisons += [row[0] for row in await connection.execute(_in("""
+            SELECT id FROM comparisons
+            WHERE project_id = :project AND baseline_recording_id IN :recordings
+        """, "recordings"), {"project": project_id, "recordings": recordings})]
+    if runs:
+        comparisons += [row[0] for row in await connection.execute(_in("""
+            SELECT id FROM comparisons
+            WHERE project_id = :project AND candidate_run_id IN :runs
+        """, "runs"), {"project": project_id, "runs": runs})
+            if row[0] not in comparisons]
+    exports: list[UUID] = []
+    if recordings:
+        exports = [row[0] for row in await connection.execute(_in("""
+            SELECT job_id FROM archive_exports
+            WHERE project_id = :project AND recording_id IN :recordings
+        """, "recordings"), {"project": project_id, "recordings": recordings})]
+    size = 0
+    if runs:
+        size += int((await connection.execute(_in("""
+            SELECT coalesce(sum(octet_length(payload::text)), 0)
+            FROM events WHERE project_id = :project AND run_id IN :runs
+        """, "runs"), {"project": project_id, "runs": runs})).scalar_one() or 0)
+        size += int((await connection.execute(_in("""
+            SELECT coalesce(sum(size_bytes), 0) FROM artifacts
+            WHERE project_id = :project AND run_id IN :runs
+        """, "runs"), {"project": project_id, "runs": runs})).scalar_one() or 0)
     return {"runs": runs, "recordings": recordings, "comparisons": comparisons,
             "exports": exports, "bytes": int(size or 0)}
 
@@ -75,16 +102,19 @@ async def _destroy(connection, project_id: UUID, graph: dict) -> None:
                   "comparisons": graph["comparisons"], "exports": graph["exports"]}
     # Ordered from derived data back to its source: every statement removes
     # rows that the next statement's targets are referenced by.
-    for statement in (
-        "DELETE FROM archive_exports WHERE project_id = :project AND job_id = ANY(CAST(:exports AS uuid[]))",
-        "DELETE FROM comparison_divergences WHERE project_id = :project"
-        " AND comparison_id = ANY(CAST(:comparisons AS uuid[]))",
-        "DELETE FROM comparisons WHERE project_id = :project AND id = ANY(CAST(:comparisons AS uuid[]))",
-        "DELETE FROM recordings WHERE project_id = :project AND id = ANY(CAST(:recordings AS uuid[]))",
-        "DELETE FROM seal_requests WHERE project_id = :project AND run_id = ANY(CAST(:runs AS uuid[]))",
-        "DELETE FROM runs WHERE project_id = :project AND id = ANY(CAST(:runs AS uuid[]))",
+    for statement, name in (
+        ("DELETE FROM archive_exports WHERE project_id = :project AND job_id IN :exports", "exports"),
+        ("DELETE FROM comparison_divergences WHERE project_id = :project"
+         " AND comparison_id IN :comparisons", "comparisons"),
+        ("DELETE FROM comparisons WHERE project_id = :project AND id IN :comparisons", "comparisons"),
+        ("DELETE FROM recordings WHERE project_id = :project AND id IN :recordings", "recordings"),
+        ("DELETE FROM seal_requests WHERE project_id = :project AND run_id IN :runs", "runs"),
+        ("DELETE FROM runs WHERE project_id = :project AND id IN :runs", "runs"),
     ):
-        await connection.execute(text(statement), parameters)
+        if not parameters[name]:
+            continue
+        await connection.execute(_in(statement, name),
+                                 {"project": project_id, name: parameters[name]})
 
 
 async def process_deletion(engine, project_id: UUID, job_id: UUID) -> bool:
@@ -108,6 +138,11 @@ async def process_deletion(engine, project_id: UUID, job_id: UUID) -> bool:
         return True
     try:
         async with project_connection(engine, project_id) as connection:
+            # Events and recordings are immutable. This declares the
+            # transaction a deletion, which is the only thing the trigger
+            # accepts as grounds for removing one, and it lasts exactly as
+            # long as this transaction does.
+            await connection.execute(text("SET LOCAL anvil.deletion = 'on'"))
             graph = await plan(connection, project_id,
                                request["target_kind"], request["target_id"])
             await _destroy(connection, project_id, graph)

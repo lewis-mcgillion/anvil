@@ -1107,3 +1107,56 @@ async def test_a_retried_deletion_does_not_delete_or_audit_twice(engine):
               AND root_ids = CAST(:root AS jsonb)
         """), {"project": PROJECT, "root": json.dumps([str(recording_id)])})).scalar_one()
     assert rows == 1
+
+
+@pytest.mark.asyncio
+async def test_immutable_rows_can_only_be_deleted_by_a_declared_deletion(engine):
+    """ANVIL-071: the deletion exception is narrow, and nothing else widens it.
+
+    An event may be removed by a transaction that declared itself a deletion,
+    and by nothing else. It may never be edited, whatever the transaction
+    declared: a privacy deletion needs to destroy evidence, not rewrite it.
+    """
+    recording_id = await _sealed_baseline(engine, {"sku": "ABC"})
+    async with project_connection(engine, PROJECT) as connection:
+        run_id = (await connection.execute(text("""
+            SELECT run_id FROM recordings WHERE project_id = :project AND id = :recording
+        """), {"project": PROJECT, "recording": recording_id})).scalar_one()
+        event_id = (await connection.execute(text("""
+            SELECT event_id FROM events WHERE project_id = :project AND run_id = :run LIMIT 1
+        """), {"project": PROJECT, "run": run_id})).scalar_one()
+
+    for declaration, statement in (
+        (None, "DELETE FROM events WHERE project_id = :project AND event_id = :event"),
+        ("on", "UPDATE events SET replay_safe = NOT replay_safe"
+               " WHERE project_id = :project AND event_id = :event"),
+        ("off", "DELETE FROM events WHERE project_id = :project AND event_id = :event"),
+        (None, "UPDATE recordings SET schema_version = '2'"
+               " WHERE project_id = :project AND id = :recording"),
+        ("on", "UPDATE recordings SET schema_version = '2'"
+               " WHERE project_id = :project AND id = :recording"),
+    ):
+        with pytest.raises(Exception) as refused:
+            async with project_connection(engine, PROJECT) as connection:
+                if declaration is not None:
+                    await connection.execute(
+                        text(f"SET LOCAL anvil.deletion = '{declaration}'"))
+                await connection.execute(text(statement), {
+                    "project": PROJECT, "event": event_id, "recording": recording_id})
+        assert "immutable row cannot be changed" in str(refused.value)
+
+    # The declaration does not outlive its transaction, so a later statement
+    # on the same pooled connection is refused again.
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("SET LOCAL anvil.deletion = 'on'"))
+    with pytest.raises(Exception) as refused:
+        async with project_connection(engine, PROJECT) as connection:
+            await connection.execute(text("""
+                DELETE FROM events WHERE project_id = :project AND event_id = :event
+            """), {"project": PROJECT, "event": event_id})
+    assert "immutable row cannot be changed" in str(refused.value)
+
+    async with project_connection(engine, PROJECT) as connection:
+        assert (await connection.execute(text("""
+            SELECT count(*) FROM events WHERE project_id = :project AND event_id = :event
+        """), {"project": PROJECT, "event": event_id})).scalar_one() == 1

@@ -64,6 +64,21 @@ This is cascade-by-construction rather than cascade-by-constraint:
 careless `DELETE` cannot silently destroy sealed evidence. The worker states
 the order explicitly, from derived data back to its source.
 
+### Deleting what is meant to be immutable
+
+Events and recordings are immutable: a database trigger refuses every
+`UPDATE` and every `DELETE`, which is what makes a sealed recording evidence
+rather than a log someone could edit. A privacy deletion has to destroy that
+evidence, so migration `0008_privacy_deletion` narrows the rule to exactly
+one exception: a row may be **deleted**, never **updated**, and only inside a
+transaction that has declared itself a deletion by setting `anvil.deletion`.
+
+The declaration is `SET LOCAL`, so it ends with the transaction and cannot
+leak onto a pooled connection. No API path sets it; the deletion worker sets
+it in the same transaction that writes the audit row. An `UPDATE` is refused
+even when it is set, because deletion is a reason to destroy history and
+never a reason to rewrite it.
+
 ### Errors, cancellation and cleanup
 
 - The whole deletion — the graph removal, the audit row, and the link from the
