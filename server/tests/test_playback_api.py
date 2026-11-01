@@ -254,9 +254,9 @@ def test_streams_endpoint_reconstructs_presentations(client):
         event("s0", 0, "run.started"),
         event("s1", 1, "model.requested", invocation="inv-1", payload={"model": "gpt"}),
         event("s2", 2, "model.chunk", invocation="inv-1", parents=("s1",),
-              payload={"delta": "Hel"}),
+              payload={"chunk": "Hel"}),
         event("s3", 3, "model.chunk", invocation="inv-1", parents=("s2",),
-              payload={"delta": "lo"}),
+              payload={"chunk": "lo"}),
         event("s4", 4, "model.completed", invocation="inv-1", parents=("s3",),
               payload={"text": "Hello"}),
     ]

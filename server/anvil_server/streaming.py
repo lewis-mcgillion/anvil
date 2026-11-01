@@ -159,7 +159,8 @@ def reconstruct_streams(events: Iterable[Mapping[str, Any]]) -> list[dict[str, A
     stream was ``truncated`` (chunks present with no terminal resolution).
 
     Raises :class:`StreamingError` if a chunk carries no invocation identity or
-    a non-string delta, because the reconstruction would otherwise be guesswork.
+    a non-string ``chunk`` payload, because the reconstruction would otherwise
+    be guesswork.
     """
     ordered = order_events(events)
     records: dict[str, dict[str, Any]] = {}
@@ -185,10 +186,12 @@ def reconstruct_streams(events: Iterable[Mapping[str, Any]]) -> list[dict[str, A
                     f"Event {event['event_id']} is a model.chunk without an invocation_id"
                 )
             invocation = str(invocation)
-            delta = payload.get("delta")
+            # ``chunk`` is the field published in schemas/v1 and emitted by both
+            # the capture SDK and the ADK adapter.
+            delta = payload.get("chunk")
             if not isinstance(delta, str):
                 raise StreamingError(
-                    f"Event {event['event_id']} has a non-string chunk delta"
+                    f"Event {event['event_id']} has a non-string chunk payload"
                 )
             record = records.get(invocation)
             if record is None:

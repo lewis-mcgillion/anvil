@@ -58,7 +58,7 @@ def streamed_run(deltas=("Hel", "lo, ", "world"), *, complete: bool = True) -> l
                 "model.chunk",
                 invocation="inv-m",
                 parents=(previous,),
-                payload={"delta": delta},
+                payload={"chunk": delta},
                 occurred_at=f"2026-01-01T00:00:{index:02d}.500Z",
             )
         )
@@ -109,11 +109,11 @@ class TestReconstruction:
         events = [
             event("m0", 0, "model.requested", invocation="inv-m", payload={"model": "m"}),
             event("c0", 1, "model.chunk", invocation="inv-m", parents=("m0",),
-                  payload={"delta": "a"}, occurred_at="2026-01-01T00:00:10.000Z"),
+                  payload={"chunk": "a"}, occurred_at="2026-01-01T00:00:10.000Z"),
             event("c1", 2, "model.chunk", invocation="inv-m", parents=("c0",),
-                  payload={"delta": "b"}, occurred_at="2026-01-01T00:00:05.000Z"),
+                  payload={"chunk": "b"}, occurred_at="2026-01-01T00:00:05.000Z"),
             event("c2", 3, "model.chunk", invocation="inv-m", parents=("c1",),
-                  payload={"delta": "c"}, occurred_at="2026-01-01T00:00:12.000Z"),
+                  payload={"chunk": "c"}, occurred_at="2026-01-01T00:00:12.000Z"),
         ]
         [record] = reconstruct_streams(events)
         offsets = [frame.offset for frame in record["frames"]]
@@ -125,9 +125,9 @@ class TestReconstruction:
         events = [
             event("m0", 0, "model.requested", invocation="inv-m", payload={"model": "m"}),
             event("c0", 1, "model.chunk", invocation="inv-m", parents=("m0",),
-                  payload={"delta": "a"}, occurred_at=None),
+                  payload={"chunk": "a"}, occurred_at=None),
             event("c1", 2, "model.chunk", invocation="inv-m", parents=("c0",),
-                  payload={"delta": "b"}, occurred_at=None),
+                  payload={"chunk": "b"}, occurred_at=None),
         ]
         [record] = reconstruct_streams(events)
         assert [frame.offset for frame in record["frames"]] == [0.0, 0.0]
@@ -137,7 +137,7 @@ class TestReconstruction:
         events = [
             event("m0", 0, "model.requested", invocation="inv-m", payload={"model": "m"}),
             event("c0", 1, "model.chunk", invocation="inv-m", parents=("m0",),
-                  payload={"delta": "a"}, occurred_at="not-a-timestamp"),
+                  payload={"chunk": "a"}, occurred_at="not-a-timestamp"),
         ]
         [record] = reconstruct_streams(events)
         assert [frame.offset for frame in record["frames"]] == [0.0]
@@ -161,11 +161,11 @@ class TestReconstruction:
     def test_parallel_streams_are_kept_separate(self):
         events = [
             event("a0", 0, "model.requested", invocation="inv-a", payload={"model": "m"}),
-            event("a1", 1, "model.chunk", invocation="inv-a", parents=("a0",), payload={"delta": "A1"}),
+            event("a1", 1, "model.chunk", invocation="inv-a", parents=("a0",), payload={"chunk": "A1"}),
             event("b0", 0, "model.requested", stream=STREAM_B, invocation="inv-b", payload={"model": "m"}),
             event("b1", 1, "model.chunk", stream=STREAM_B, invocation="inv-b",
-                  parents=("b0",), payload={"delta": "B1"}),
-            event("a2", 2, "model.chunk", invocation="inv-a", parents=("a1",), payload={"delta": "A2"}),
+                  parents=("b0",), payload={"chunk": "B1"}),
+            event("a2", 2, "model.chunk", invocation="inv-a", parents=("a1",), payload={"chunk": "A2"}),
         ]
         records = reconstruct_streams(events)
         assert {record["invocation_id"]: record["text"] for record in records} == {
@@ -175,7 +175,7 @@ class TestReconstruction:
 
     def test_chunk_without_a_request_still_reconstructs(self):
         events = [
-            event("c0", 0, "model.chunk", invocation="inv-orphan", payload={"delta": "x"}),
+            event("c0", 0, "model.chunk", invocation="inv-orphan", payload={"chunk": "x"}),
         ]
         [record] = reconstruct_streams(events)
         assert record["text"] == "x"
@@ -183,16 +183,16 @@ class TestReconstruction:
         assert record["model"] is None
 
     def test_chunk_without_invocation_identity_fails_closed(self):
-        events = [event("c0", 0, "model.chunk", payload={"delta": "x"})]
+        events = [event("c0", 0, "model.chunk", payload={"chunk": "x"})]
         with pytest.raises(StreamingError, match="without an invocation_id"):
             reconstruct_streams(events)
 
     @pytest.mark.parametrize("delta", [None, 5, {"text": "x"}, ["x"], True])
-    def test_non_string_delta_fails_closed(self, delta):
+    def test_non_string_chunk_payload_fails_closed(self, delta):
         events = [
-            event("c0", 0, "model.chunk", invocation="inv-m", payload={"delta": delta}),
+            event("c0", 0, "model.chunk", invocation="inv-m", payload={"chunk": delta}),
         ]
-        with pytest.raises(StreamingError, match="non-string chunk delta"):
+        with pytest.raises(StreamingError, match="non-string chunk payload"):
             reconstruct_streams(events)
 
     def test_non_streaming_recording_yields_no_records(self):
@@ -202,7 +202,7 @@ class TestReconstruction:
     def test_empty_delta_is_a_legitimate_keepalive_chunk(self):
         events = [
             event("m0", 0, "model.requested", invocation="inv-m", payload={"model": "m"}),
-            event("c0", 1, "model.chunk", invocation="inv-m", parents=("m0",), payload={"delta": ""}),
+            event("c0", 1, "model.chunk", invocation="inv-m", parents=("m0",), payload={"chunk": ""}),
         ]
         [record] = reconstruct_streams(events)
         assert record["text"] == ""

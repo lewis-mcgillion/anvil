@@ -270,7 +270,16 @@ def _apply(state: dict[str, Any], event: Mapping[str, Any]) -> None:
                 {"event_id": event_id, "reason": "model.chunk without a matching request"}
             )
             return
-        record["chunks"].append({"event_id": event_id, "delta": payload.get("delta")})
+        # ``chunk`` and ``chunk_index`` are the fields published in schemas/v1
+        # and emitted by both the capture SDK and the ADK adapter. Reading any
+        # other name silently drops streamed content from the projection.
+        record["chunks"].append(
+            {
+                "event_id": event_id,
+                "chunk_index": payload.get("chunk_index"),
+                "chunk": payload.get("chunk"),
+            }
+        )
         return
     state["replay_blockers"].append({"event_id": event_id, "reason": f"unknown event type {event_type}"})
 
