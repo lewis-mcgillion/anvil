@@ -8,6 +8,8 @@
 - [Mandatory server-side capture policy](capture-policy.md) — what the server
   removes from every stored event, why it is not configurable, and what
   redaction costs a recording.
+- [Audit trail, deletion and privacy](audit-and-deletion.md) — what is
+  audited, what an audit row may contain, and what deleting a run destroys.
 - [Threat model](threat-model.md) — assets, adversaries, trust boundaries,
   threat scenarios (untrusted code, malicious recordings, secret leakage,
   tenant isolation) and operational rules for errors, cancellation and

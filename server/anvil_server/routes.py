@@ -21,6 +21,7 @@ from .comparisons import (ComparisonError, create_comparison, get_comparison,
                           get_report, list_divergences)
 from .divergence import CATEGORIES as DIVERGENCE_CATEGORIES
 from .auth import bearer_token, issue_key, key_hash, validate_scopes
+from . import audit
 from .bundles import MAX_ARTIFACT, MAX_BUNDLE, export_bundle, validate_recording_archive
 from .identifiers import new_uuid7
 from .database import project_connection
@@ -482,6 +483,10 @@ async def get_recording(request: Request, project_id: UUID, recording_id: UUID):
             FROM recordings JOIN runs ON runs.id = recordings.run_id
             WHERE recordings.id = :recording AND recordings.project_id = :project
         """), {"recording": recording_id, "project": project_id})).mappings().first()
+        if row is not None:
+            await audit.record(connection, project_id, kind="read",
+                               reason="recording_read", root_ids=[recording_id],
+                               resource_ids=[row["run_id"]])
     if row is None:
         return failure(request, 404, "not_found")
     return {"id": str(row["id"]), "run_id": str(row["run_id"]), "project_id": str(row["project_id"]),
@@ -515,6 +520,10 @@ async def project_recording(request: Request, project_id: UUID, recording_id: UU
             WHERE project_id = :project AND run_id = :run
             ORDER BY stream_id, sequence, event_id
         """), {"project": project_id, "run": row["run_id"]})).mappings().all()
+        # Rebuilding state from a recording is replay, not merely reading it.
+        await audit.record(connection, project_id, kind="replay",
+                           reason="projection_built", root_ids=[recording_id],
+                           resource_ids=[row["run_id"]])
     selected = []
     found = before_event_id is None
     for event in events:
@@ -592,6 +601,11 @@ async def request_recording_export(request: Request, recording_id: UUID,
                 VALUES (:project, :key, :hash, 202, CAST(:response AS jsonb))
             """), {"project": project_id, "key": key, "hash": digest,
                    "response": json.dumps({"job_id": str(job_id)})})
+            # Audited in the same transaction as the queued job: an export
+            # that exists without an audit row is an unexplained copy.
+            await audit.record(connection, project_id, kind="export",
+                               reason="export_queued", root_ids=[recording_id],
+                               resource_ids=[job_id])
     job_url = f"/v1/projects/{project_id}/jobs/{job_id}"
     return Response(content=json.dumps({"job_id": str(job_id), "job_url": job_url, "status": "queued"}),
                     media_type="application/json", status_code=202, headers={"Location": job_url})
@@ -619,6 +633,10 @@ async def download_recording_archive(request: Request, project_id: UUID, recordi
             SELECT name, content FROM artifacts WHERE project_id = :project AND run_id = :run
             ORDER BY id
         """), {"project": project_id, "run": recording["run_id"]})).mappings().all()
+        await audit.record(connection, project_id, kind="export",
+                           reason="archive_download", root_ids=[recording_id],
+                           resource_ids=[recording["run_id"]],
+                           size_bytes=sum(len(bytes(artifact["content"])) for artifact in artifacts))
     payload = {"schema_version": "1", "run_id": str(recording["run_id"]),
                "manifest": recording["manifest"], "manifest_sha256": recording["sha256_hash"],
                "events": [{"event_id": str(event["event_id"]), "run_id": str(event["run_id"]),
@@ -1018,6 +1036,13 @@ async def create_comparison_job(request: Request, project_id: UUID, payload: Com
             ON CONFLICT (project_id, key) DO NOTHING
         """), {"project": project_id, "key": key, "hash": digest,
                "response": json.dumps(result)})
+        # A comparison re-derives behaviour from a sealed recording, so it is
+        # audited as replay even though it executes no production tool.
+        await audit.record(connection, project_id, kind="replay",
+                           reason="comparison_queued",
+                           root_ids=[payload.baseline_recording_id],
+                           resource_ids=[payload.candidate_run_id,
+                                         UUID(result["comparison_id"])])
     return _accepted_comparison(project_id, result)
 
 
