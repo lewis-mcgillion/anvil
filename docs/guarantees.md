@@ -181,6 +181,29 @@ See [faults.md](faults.md).
 - An enabled judge can only withhold a pass; it can never rescue a
   deterministic or infrastructure failure. — proof:
   `server/tests/test_divergence_gating.py::TestJudgeGating::test_a_gating_judge_can_only_withhold_a_pass`
+- No judge verdict, however confident, can rescue a deterministic
+  failure. — proof:
+  `server/tests/test_divergence_judge.py::TestNeverOverridesDeterminism::test_no_verdict_can_rescue_a_deterministic_failure`
+- An invalid, refused or off-schema judge response is inconclusive, never a
+  verdict. — proof:
+  `server/tests/test_divergence_judge.py::TestMalformedResponses::test_a_response_that_is_not_an_object_is_inconclusive`
+- An unknown field in a judge response is refused rather than ignored. —
+  proof:
+  `server/tests/test_divergence_judge.py::TestMalformedResponses::test_an_unknown_field_is_inconclusive_rather_than_ignored`
+- A judge that cites evidence it was never shown is inconclusive. — proof:
+  `server/tests/test_divergence_judge.py::TestMalformedResponses::test_a_fabricated_citation_invalidates_the_answer`
+- A verdict below the rubric's required confidence is inconclusive. —
+  proof:
+  `server/tests/test_divergence_judge.py::TestUncertainty::test_a_verdict_below_the_rubric_threshold_is_inconclusive`
+- A broker that fails, times out or is cancelled cannot break the
+  comparison, and cannot be retried past its budget. — proof:
+  `server/tests/test_divergence_judge.py::TestBrokerFailures::test_the_budget_counts_failed_calls`
+- A judge obeying an instruction injected into the evidence still cannot
+  produce a pass. — proof:
+  `server/tests/test_divergence_judge.py::TestAdversarialInput::test_a_judge_that_obeys_the_injected_instruction_still_cannot_pass`
+- Every assessment carries the rubric digest, comparison hash, request
+  digest and model it came from. — proof:
+  `server/tests/test_divergence_judge.py::TestProvenance::test_a_verdict_carries_the_rubric_and_evidence_that_produced_it`
 
 See [comparison.md](comparison.md).
 
@@ -234,8 +257,10 @@ opposite will be wrong in a way that matters.
   but there is no OS-level isolation boundary around an agent under test.
 - **Live models.** There is no model broker, so no budget, no provider
   credential handling, and no live-model re-execution.
-- **Judges.** The gate understands a judge verdict, but no judge
-  implementation exists: a judged comparison is permanently `not_run`.
+- **Judges.** A schema-constrained judge exists and is proven against
+  malformed, refused and adversarial responses, but nothing calls it: no
+  broker is implemented, and the comparison job does not run one, so a
+  stored comparison is still `not_run` in practice.
 - **End-to-end runs.** Components are tested against contract fixtures. A
   full agent-to-dashboard run against the real server is not yet covered by
   an automated test.
