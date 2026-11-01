@@ -16,9 +16,27 @@ from sqlalchemy import text
 
 from .database import engine_for, project_connection
 from .bundles import MAX_BUNDLE
-from .repositories import RunRepository
+from .playback import (
+    PROJECTION_VERSION,
+    SUPPORTED_PROJECTION_VERSIONS,
+    PlaybackError,
+    ProjectionIndex,
+    projection_hash,
+)
+from .repositories import EventRepository, RunRepository
 from .security import AccessDenied, Unauthenticated, authorize
 from .routes import router
+from .streaming import StreamingError, reconstruct_streams
+
+#: Recorded playback is a pure read. These labels are returned on every
+#: playback response so a client can prove which execution mode produced it.
+PLAYBACK_MODE = {
+    "mode": "recorded_playback",
+    "executes_agent_code": False,
+    "executes_tools": False,
+    "contacts_model_provider": False,
+    "schedules_jobs": False,
+}
 
 
 class Problem(BaseModel):
@@ -185,3 +203,86 @@ async def get_run(request: Request, run_id: uuid.UUID, project_id: uuid.UUID | N
     if project_id is None:
         return problem(request, 400, "invalid_request", "Project scope is required")
     return await get_project_run(request, project_id, run_id)
+
+
+async def _playback_index(request: Request, project_id: uuid.UUID, run_id: uuid.UUID,
+                          version: str) -> ProjectionIndex | JSONResponse:
+    """Authorize, load and order a recording, or return a problem response.
+
+    Read-only throughout: no job is created and no broker is contacted.
+    """
+    engine = getattr(request.app.state, "engine", None)
+    if engine is None:
+        return problem(request, 503, "not_ready", "Database unavailable")
+    if version not in SUPPORTED_PROJECTION_VERSIONS:
+        return problem(request, 400, "unsupported_projection_version",
+                       f"Projection version {version!r} is not supported")
+    try:
+        await authorize(engine, request, project_id, "runs:read")
+    except Unauthenticated:
+        response = problem(request, 401, "unauthenticated", "Invalid credentials")
+        response.headers["WWW-Authenticate"] = "Bearer"
+        return response
+    except AccessDenied:
+        return problem(request, 403, "forbidden", "Access denied")
+    if await RunRepository(engine).get(project_id, run_id) is None:
+        return problem(request, 404, "not_found", "Run not found")
+    events = await EventRepository(engine).list_for_run(project_id, run_id)
+    try:
+        return ProjectionIndex(events, version=version, run_id=str(run_id))
+    except PlaybackError as error:
+        return problem(request, 422, "unprojectable_recording", str(error))
+
+
+@app.get("/v1/projects/{project_id}/runs/{run_id}/projection")
+async def get_projection(request: Request, project_id: uuid.UUID, run_id: uuid.UUID,
+                         cursor: str | None = None,
+                         projection_version: str = PROJECTION_VERSION):
+    """Return the read-only projection of a recording, optionally seeking.
+
+    Playback never schedules a job and never reaches the model broker; the
+    response carries explicit mode labels asserting that.
+    """
+    index = await _playback_index(request, project_id, run_id, projection_version)
+    if isinstance(index, JSONResponse):
+        return index
+    try:
+        position = len(index) if cursor is None else index.position_of(cursor)
+    except PlaybackError:
+        return problem(request, 400, "invalid_cursor",
+                       "Cursor does not identify an event in this recording")
+    projection = index.at(position)
+    return {
+        **PLAYBACK_MODE,
+        "run_id": str(run_id),
+        "projection_version": projection_version,
+        "position": position,
+        "event_count": len(index),
+        "cursor": index.cursor(position),
+        "next_cursor": index.cursor(position + 1) if position < len(index) else None,
+        "checkpoint_positions": index.checkpoint_positions,
+        "projection_hash": projection_hash(projection),
+        "projection": projection,
+    }
+
+
+@app.get("/v1/projects/{project_id}/runs/{run_id}/streams")
+async def get_streams(request: Request, project_id: uuid.UUID, run_id: uuid.UUID,
+                      projection_version: str = PROJECTION_VERSION):
+    """Return reconstructed streaming presentations for a recording."""
+    index = await _playback_index(request, project_id, run_id, projection_version)
+    if isinstance(index, JSONResponse):
+        return index
+    try:
+        records = reconstruct_streams(index.events)
+    except StreamingError as error:
+        return problem(request, 422, "unreconstructable_stream", str(error))
+    return {
+        **PLAYBACK_MODE,
+        "run_id": str(run_id),
+        "projection_version": projection_version,
+        "streams": [
+            {**record, "frames": [frame.as_dict() for frame in record["frames"]]}
+            for record in records
+        ],
+    }

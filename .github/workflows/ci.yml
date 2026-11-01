@@ -82,6 +82,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci --prefix web
       - run: npm --prefix web run build
+      - run: npx --prefix web playwright install --with-deps chromium
+      - run: npm --prefix web test
 
   containers:
     runs-on: ubuntu-latest
