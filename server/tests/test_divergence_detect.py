@@ -117,15 +117,15 @@ SINGLE_MUTATIONS = [
     ("changed_prompt", {"model_request": {"messages": [{"role": "user", "content": "other"}]}}),
     ("changed_model", {"model": "gpt-other"}),
     ("changed_tool_name", {"tool_name": "lookup"}),
-    ("changed_tool_arguments", {"tool_args": {"q": "scarf"}}),
+    ("changed_tool_args", {"tool_args": {"q": "scarf"}}),
     ("changed_output", {"tool_result": {"hits": 9}}),
     ("changed_output", {"model_response": {"text": "thinking"}}),
     ("changed_output", {"output": {"answer": "a scarf"}}),
-    ("changed_control_flow", {"outcome": "failed"}),
-    ("changed_control_flow", {"agent_name": "other"}),
-    ("changed_budget", {"usage": {"input_tokens": 500, "output_tokens": 20}}),
-    ("missing_call", {"drop_tool": True}),
-    ("extra_call", {"extra_tool": True}),
+    ("control_flow", {"outcome": "failed"}),
+    ("control_flow", {"agent_name": "other"}),
+    ("budget_exceeded", {"usage": {"input_tokens": 500, "output_tokens": 20}}),
+    ("missing_tool_call", {"drop_tool": True}),
+    ("extra_tool_call", {"extra_tool": True}),
     ("capture_gap", {"gap": True}),
 ]
 
@@ -170,9 +170,9 @@ class TestSingleMutations:
         # or, for a missing/extra call, the one side that exists.
         if category == "capture_gap":
             assert "baseline" not in report and "candidate" not in report
-        elif category == "missing_call":
+        elif category == "missing_tool_call":
             assert report["baseline"] and "candidate" not in report
-        elif category == "extra_call":
+        elif category == "extra_tool_call":
             assert report["candidate"] and "baseline" not in report
         else:
             assert report["baseline"] != report["candidate"]
@@ -191,7 +191,7 @@ class TestSingleMutations:
 
     def test_every_published_category_is_reachable(self) -> None:
         reached = {category for category, _ in SINGLE_MUTATIONS}
-        reached.add("changed_error")  # covered in TestErrors
+        reached.add("error_difference")  # covered in TestErrors
         reached.add("ambiguous_alignment")  # covered in TestFailsClosed
         assert reached == set(detect.CATEGORIES)
 
@@ -203,7 +203,7 @@ class TestSingleMutations:
 
     def test_a_rename_does_not_hide_a_change_underneath_it(self) -> None:
         result = compare(model="gpt-other", tool_args={"q": "scarf"})
-        assert set(result.categories) == {"changed_model", "changed_tool_arguments"}
+        assert set(result.categories) == {"changed_model", "changed_tool_args"}
 
     def test_an_ambiguous_rename_stays_missing_and_extra(self) -> None:
         # Two calls removed and two added under one parent have no unique
@@ -216,7 +216,7 @@ class TestSingleMutations:
             return run.events
 
         result = detect.compare(run_with(("a", "b")), run_with(("c", "d")))
-        assert set(result.categories) == {"missing_call", "extra_call"}
+        assert set(result.categories) == {"missing_tool_call", "extra_tool_call"}
         assert len(result.findings) == 4
 
     def test_a_mutation_is_located_at_the_right_identity(self) -> None:
@@ -230,8 +230,8 @@ class TestSingleMutations:
 class TestErrors:
     def test_a_failed_tool_reports_control_flow_and_the_error(self) -> None:
         result = compare(tool_failed=True)
-        assert set(result.categories) == {"changed_output", "changed_error", "changed_control_flow"}
-        error = next(f for f in result.findings if f.category == "changed_error")
+        assert set(result.categories) == {"changed_output", "error_difference", "control_flow"}
+        error = next(f for f in result.findings if f.category == "error_difference")
         assert error.candidate == {"message": "boom"}
 
     def test_a_changed_error_payload_is_its_own_category(self) -> None:
@@ -241,7 +241,7 @@ class TestErrors:
             if event["type"] == "tool.failed":
                 event["payload"] = {**event["payload"], "error": {"message": "different"}}
         result = detect.compare(baseline, candidate)
-        assert [finding.category for finding in result.findings] == ["changed_error"]
+        assert [finding.category for finding in result.findings] == ["error_difference"]
         assert result.findings[0].baseline == {"message": "boom"}
 
 
@@ -323,7 +323,7 @@ class TestFailsClosed:
         assert result.deterministic == "fail"
         assert {finding.category for finding in result.findings} == {
             "capture_gap",
-            "changed_tool_arguments",
+            "changed_tool_args",
         }
 
     def test_an_unresolved_invocation_is_reported_as_a_gap(self) -> None:
@@ -335,7 +335,7 @@ class TestFailsClosed:
     def test_a_run_that_never_completed_is_a_control_flow_change(self) -> None:
         result = detect.compare(make_run(), make_run(never_finished=True))
         assert result.deterministic == "fail"
-        assert "changed_control_flow" in result.categories
+        assert "control_flow" in result.categories
 
     def test_ambiguous_alignment_cannot_pass(self) -> None:
         def fan_out(first: dict, second: dict) -> list[dict]:

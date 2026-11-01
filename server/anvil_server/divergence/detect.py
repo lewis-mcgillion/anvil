@@ -54,13 +54,13 @@ CATEGORIES = (
     "changed_prompt",
     "changed_model",
     "changed_tool_name",
-    "changed_tool_arguments",
+    "changed_tool_args",
     "changed_output",
-    "changed_error",
-    "changed_control_flow",
-    "changed_budget",
-    "missing_call",
-    "extra_call",
+    "error_difference",
+    "control_flow",
+    "budget_exceeded",
+    "missing_tool_call",
+    "extra_tool_call",
     "capture_gap",
     "ambiguous_alignment",
 )
@@ -277,7 +277,7 @@ def compare_graphs(
         if pair.status == "missing":
             findings.append(
                 Finding(
-                    "missing_call",
+                    "missing_tool_call",
                     pair.identity,
                     f"{pair.baseline.kind} call {pair.baseline.name!r} is absent from the candidate",
                     baseline=pair.baseline.describe(),
@@ -287,7 +287,7 @@ def compare_graphs(
         if pair.status == "extra":
             findings.append(
                 Finding(
-                    "extra_call",
+                    "extra_tool_call",
                     pair.identity,
                     f"{pair.candidate.kind} call {pair.candidate.name!r} is not in the baseline",
                     candidate=pair.candidate.describe(),
@@ -392,7 +392,7 @@ def _pair_findings(
 
     changed, left_args, right_args = _differs(policy, left.arguments, right.arguments)
     if changed:
-        category = "changed_prompt" if left.kind == "model" else "changed_tool_arguments"
+        category = "changed_prompt" if left.kind == "model" else "changed_tool_args"
         noun = "request" if left.kind == "model" else "arguments"
         findings.append(
             Finding(
@@ -407,7 +407,7 @@ def _pair_findings(
     if left.status != right.status:
         findings.append(
             Finding(
-                "changed_control_flow",
+                "control_flow",
                 identity,
                 f"call outcome changed from {left.status!r} to {right.status!r}",
                 baseline=left.status,
@@ -431,7 +431,7 @@ def _pair_findings(
     if changed:
         findings.append(
             Finding(
-                "changed_error",
+                "error_difference",
                 identity,
                 f"{left.kind} error differs",
                 baseline=left_error,
@@ -464,7 +464,7 @@ def _run_level_findings(
         if left_start.get(field) != right_start.get(field):
             findings.append(
                 Finding(
-                    "changed_control_flow",
+                    "control_flow",
                     (),
                     f"run {detail} changed from {left_start.get(field)!r} to {right_start.get(field)!r}",
                     baseline=left_start.get(field),
@@ -488,7 +488,7 @@ def _run_level_findings(
     if (left_end is None) != (right_end is None):
         findings.append(
             Finding(
-                "changed_control_flow",
+                "control_flow",
                 (),
                 "one run completed and the other did not",
                 baseline="completed" if left_end is not None else "not completed",
@@ -502,7 +502,7 @@ def _run_level_findings(
     if left_end.get("outcome") != right_end.get("outcome"):
         findings.append(
             Finding(
-                "changed_control_flow",
+                "control_flow",
                 (),
                 f"run outcome changed from {left_end.get('outcome')!r} to {right_end.get('outcome')!r}",
                 baseline=left_end.get("outcome"),
@@ -523,7 +523,7 @@ def _run_level_findings(
     )
     if changed:
         findings.append(
-            Finding("changed_budget", (), "run usage differs", left_usage, right_usage)
+            Finding("budget_exceeded", (), "run usage differs", left_usage, right_usage)
         )
 
     changed, left_error, right_error = _differs(
@@ -533,7 +533,7 @@ def _run_level_findings(
     )
     if changed:
         findings.append(
-            Finding("changed_error", (), "run error differs", left_error, right_error)
+            Finding("error_difference", (), "run error differs", left_error, right_error)
         )
 
     return findings
