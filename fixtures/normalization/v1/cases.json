@@ -1,0 +1,557 @@
+{
+  "version": "1",
+  "policy_version": "1",
+  "description": "Cross-language normalization fixtures for ANVIL-043. Every implementation must produce the same canonical form, evidence and hash for each case.",
+  "hash": "sha256 of the canonical bytes of {\"policy\": <descriptor>, \"value\": <normalized>}",
+  "cases": [
+    {
+      "id": "object-key-ordering",
+      "description": "JCS sorts object keys by UTF-16 code unit, not by locale or insertion order.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "b": 1,
+        "a": 2,
+        "A": 3,
+        "ä": 4,
+        "Z": 5
+      },
+      "expected_normalized": {
+        "b": 1,
+        "a": 2,
+        "A": 3,
+        "ä": 4,
+        "Z": 5
+      },
+      "expected_canonical": "{\"A\":3,\"Z\":5,\"a\":2,\"b\":1,\"ä\":4}",
+      "expected_evidence": {
+        "removed": [],
+        "unmatched": []
+      },
+      "expected_hash": "848bd92717cc57765725fce85e4ce6e0fa2999d5604fa4126cd321859756f93f"
+    },
+    {
+      "id": "nested-structures",
+      "description": "Ordering applies at every depth, including inside arrays.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "z": [
+          {
+            "b": 1,
+            "a": 2
+          },
+          {
+            "d": [
+              3,
+              2,
+              1
+            ]
+          }
+        ],
+        "a": {
+          "y": {
+            "x": null
+          }
+        }
+      },
+      "expected_normalized": {
+        "z": [
+          {
+            "b": 1,
+            "a": 2
+          },
+          {
+            "d": [
+              3,
+              2,
+              1
+            ]
+          }
+        ],
+        "a": {
+          "y": {
+            "x": null
+          }
+        }
+      },
+      "expected_canonical": "{\"a\":{\"y\":{\"x\":null}},\"z\":[{\"a\":2,\"b\":1},{\"d\":[3,2,1]}]}",
+      "expected_evidence": {
+        "removed": [],
+        "unmatched": []
+      },
+      "expected_hash": "e671d361f3f8b7809a46b188e7b5925c5fa0bee9719ac03d93e191084c5b0d44"
+    },
+    {
+      "id": "array-order-is-significant",
+      "description": "Arrays are sequences: their order is data and is never sorted.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "items": [
+          3,
+          1,
+          2,
+          "b",
+          "a"
+        ]
+      },
+      "expected_normalized": {
+        "items": [
+          3,
+          1,
+          2,
+          "b",
+          "a"
+        ]
+      },
+      "expected_canonical": "{\"items\":[3,1,2,\"b\",\"a\"]}",
+      "expected_evidence": {
+        "removed": [],
+        "unmatched": []
+      },
+      "expected_hash": "b234587c0c3c8eec8478e833b19d1a03547ccf93b35e84d402d02e5989ec7210"
+    },
+    {
+      "id": "number-formatting",
+      "description": "Numbers use the ECMAScript double formatting JCS requires.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "zero": 0,
+        "neg": -0.0,
+        "int": 42,
+        "exp": 1e+21,
+        "small": 1e-07,
+        "frac": 0.1,
+        "big": 9007199254740991,
+        "round": 1.0
+      },
+      "expected_normalized": {
+        "zero": 0,
+        "neg": -0.0,
+        "int": 42,
+        "exp": 1e+21,
+        "small": 1e-07,
+        "frac": 0.1,
+        "big": 9007199254740991,
+        "round": 1.0
+      },
+      "expected_canonical": "{\"big\":9007199254740991,\"exp\":1e+21,\"frac\":0.1,\"int\":42,\"neg\":0,\"round\":1,\"small\":1e-7,\"zero\":0}",
+      "expected_evidence": {
+        "removed": [],
+        "unmatched": []
+      },
+      "expected_hash": "479dcf3ffeaf9cb462ca81e6ca68dd238507932b19bebf3475020b33123b1dba"
+    },
+    {
+      "id": "string-escaping",
+      "description": "Only the JCS short escapes and control-character escapes are emitted.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "quote": "a\"b",
+        "backslash": "a\\b",
+        "controls": "\b\f\n\r\t",
+        "unit": "\u0001",
+        "solidus": "a/b",
+        "tab_literal": "x\ty"
+      },
+      "expected_normalized": {
+        "quote": "a\"b",
+        "backslash": "a\\b",
+        "controls": "\b\f\n\r\t",
+        "unit": "\u0001",
+        "solidus": "a/b",
+        "tab_literal": "x\ty"
+      },
+      "expected_canonical": "{\"backslash\":\"a\\\\b\",\"controls\":\"\\b\\f\\n\\r\\t\",\"quote\":\"a\\\"b\",\"solidus\":\"a/b\",\"tab_literal\":\"x\\ty\",\"unit\":\"\\u0001\"}",
+      "expected_evidence": {
+        "removed": [],
+        "unmatched": []
+      },
+      "expected_hash": "d670dd7695ba0b52982fc7b10444431065d1027b9778df21dbe427540bc1295f"
+    },
+    {
+      "id": "unicode-is-not-escaped",
+      "description": "Non-ASCII characters are emitted literally as UTF-8.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "greek": "αβ",
+        "emoji": "😀",
+        "cjk": "中文",
+        "combining": "é"
+      },
+      "expected_normalized": {
+        "greek": "αβ",
+        "emoji": "😀",
+        "cjk": "中文",
+        "combining": "é"
+      },
+      "expected_canonical": "{\"cjk\":\"中文\",\"combining\":\"é\",\"emoji\":\"😀\",\"greek\":\"αβ\"}",
+      "expected_evidence": {
+        "removed": [],
+        "unmatched": []
+      },
+      "expected_hash": "26d574a1516fac95afd28b120a9c69477033a944849fdc7500034d4d114e91fd"
+    },
+    {
+      "id": "literals-and-empties",
+      "description": "Booleans, null and empty containers have one canonical form each.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "t": true,
+        "f": false,
+        "n": null,
+        "obj": {},
+        "arr": [],
+        "s": ""
+      },
+      "expected_normalized": {
+        "t": true,
+        "f": false,
+        "n": null,
+        "obj": {},
+        "arr": [],
+        "s": ""
+      },
+      "expected_canonical": "{\"arr\":[],\"f\":false,\"n\":null,\"obj\":{},\"s\":\"\",\"t\":true}",
+      "expected_evidence": {
+        "removed": [],
+        "unmatched": []
+      },
+      "expected_hash": "b129630a7217303af4a6a3867533cd835083d94c39c01d63f21884a8435d8e79"
+    },
+    {
+      "id": "ignore-timing-pointer",
+      "description": "An explicitly configured timing pointer is removed and reported.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [
+          "/timing/latency_ms"
+        ],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "timing": {
+          "latency_ms": 12,
+          "attempt": 1
+        },
+        "output": "ok"
+      },
+      "expected_normalized": {
+        "timing": {
+          "attempt": 1
+        },
+        "output": "ok"
+      },
+      "expected_canonical": "{\"output\":\"ok\",\"timing\":{\"attempt\":1}}",
+      "expected_evidence": {
+        "removed": [
+          "/timing/latency_ms"
+        ],
+        "unmatched": []
+      },
+      "expected_hash": "2725f5daf3083ef8b9283b37527d1105da555c4cab91c4184f264d42b2b05b91"
+    },
+    {
+      "id": "ignore-multiple-pointers",
+      "description": "Several ignores are applied in sorted pointer order.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [
+          "/timing/started_at",
+          "/trace_id"
+        ],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "trace_id": "t-1",
+        "timing": {
+          "started_at": "2026-01-01T00:00:00Z"
+        },
+        "v": 1
+      },
+      "expected_normalized": {
+        "timing": {},
+        "v": 1
+      },
+      "expected_canonical": "{\"timing\":{},\"v\":1}",
+      "expected_evidence": {
+        "removed": [
+          "/timing/started_at",
+          "/trace_id"
+        ],
+        "unmatched": []
+      },
+      "expected_hash": "a7480c96ea633fcc5ad3b7d46963979254b53243f3386737ad0591acea6bf207"
+    },
+    {
+      "id": "ignore-array-element-by-index",
+      "description": "An array element may be ignored by index, shortening the array.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [
+          "/items/1"
+        ],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "items": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      "expected_normalized": {
+        "items": [
+          "a",
+          "c"
+        ]
+      },
+      "expected_canonical": "{\"items\":[\"a\",\"c\"]}",
+      "expected_evidence": {
+        "removed": [
+          "/items/1"
+        ],
+        "unmatched": []
+      },
+      "expected_hash": "27b771a985297b0b123170a5b4d1a296de4c0e49a1fad8117d9b283f9b9cb298"
+    },
+    {
+      "id": "ignore-escaped-pointer-tokens",
+      "description": "~1 and ~0 decode to / and ~ inside a pointer token.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [
+          "/a~1b",
+          "/c~0d"
+        ],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "a/b": 1,
+        "c~d": 2,
+        "keep": 3
+      },
+      "expected_normalized": {
+        "keep": 3
+      },
+      "expected_canonical": "{\"keep\":3}",
+      "expected_evidence": {
+        "removed": [
+          "/a~1b",
+          "/c~0d"
+        ],
+        "unmatched": []
+      },
+      "expected_hash": "38d471314d22fdc927a38da4cd998131b1a8d25599cfcc898f0d3bb84696a744"
+    },
+    {
+      "id": "unmatched-pointer-is-reported",
+      "description": "A pointer matching nothing is reported as unmatched, never as removed.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [
+          "/absent",
+          "/trace_id"
+        ],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "trace_id": "t",
+        "kept": 1
+      },
+      "expected_normalized": {
+        "kept": 1
+      },
+      "expected_canonical": "{\"kept\":1}",
+      "expected_evidence": {
+        "removed": [
+          "/trace_id"
+        ],
+        "unmatched": [
+          "/absent"
+        ]
+      },
+      "expected_hash": "36013a4e423c0327660a661615f92f3b8e12949968afeaaf65975316c3637c76"
+    },
+    {
+      "id": "unnamed-fields-always-survive",
+      "description": "Hidden removal is impossible: a field the policy does not name survives.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [
+          "/trace_id"
+        ],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "trace_id": "t",
+        "secret_divergence": "present",
+        "nested": {
+          "trace_id": "kept"
+        }
+      },
+      "expected_normalized": {
+        "secret_divergence": "present",
+        "nested": {
+          "trace_id": "kept"
+        }
+      },
+      "expected_canonical": "{\"nested\":{\"trace_id\":\"kept\"},\"secret_divergence\":\"present\"}",
+      "expected_evidence": {
+        "removed": [
+          "/trace_id"
+        ],
+        "unmatched": []
+      },
+      "expected_hash": "d59624d5433ed18d1a1466b7c21e72160f6d59ba9c8ca5840c776d2b4b6379e2"
+    },
+    {
+      "id": "normalize-whitespace",
+      "description": "Opt-in whitespace folding collapses runs and trims, everywhere.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [],
+        "normalize_whitespace": true,
+        "casefold_strings": false
+      },
+      "input": {
+        "text": "  Hello   World \n",
+        "nested": {
+          "a": "x\t\ty"
+        },
+        "arr": [
+          " p  q "
+        ]
+      },
+      "expected_normalized": {
+        "text": "Hello World",
+        "nested": {
+          "a": "x y"
+        },
+        "arr": [
+          "p q"
+        ]
+      },
+      "expected_canonical": "{\"arr\":[\"p q\"],\"nested\":{\"a\":\"x y\"},\"text\":\"Hello World\"}",
+      "expected_evidence": {
+        "removed": [],
+        "unmatched": []
+      },
+      "expected_hash": "6e1075dbb64af5395a495dd5833723f985fb59260b47a439ca3e454f7a1fcdf9"
+    },
+    {
+      "id": "casefold-strings",
+      "description": "Opt-in casefolding is Unicode-aware, not ASCII lowercasing.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [],
+        "normalize_whitespace": false,
+        "casefold_strings": true
+      },
+      "input": {
+        "a": "HELLO",
+        "german": "STRASSE",
+        "sigma": "Σ"
+      },
+      "expected_normalized": {
+        "a": "hello",
+        "german": "strasse",
+        "sigma": "σ"
+      },
+      "expected_canonical": "{\"a\":\"hello\",\"german\":\"strasse\",\"sigma\":\"σ\"}",
+      "expected_evidence": {
+        "removed": [],
+        "unmatched": []
+      },
+      "expected_hash": "903d6fe8ee0daac3d77a5746e77bfcacf08354ede0ab76199646a5c4c709db1c"
+    },
+    {
+      "id": "text-options-combined",
+      "description": "Whitespace folding and casefolding compose.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [],
+        "normalize_whitespace": true,
+        "casefold_strings": true
+      },
+      "input": {
+        "text": "  MiXeD   Case \n"
+      },
+      "expected_normalized": {
+        "text": "mixed case"
+      },
+      "expected_canonical": "{\"text\":\"mixed case\"}",
+      "expected_evidence": {
+        "removed": [],
+        "unmatched": []
+      },
+      "expected_hash": "191ec61d8171fef78225946cb8b42d8bc6d0533b374c2bc14531e93b041b3869"
+    },
+    {
+      "id": "policy-identity-changes-the-hash",
+      "description": "The policy descriptor is hashed with the value, so a lenient policy cannot collide with a strict one.",
+      "policy": {
+        "version": "1",
+        "ignore_pointers": [
+          "/ignored"
+        ],
+        "normalize_whitespace": false,
+        "casefold_strings": false
+      },
+      "input": {
+        "ignored": "x",
+        "kept": 1
+      },
+      "expected_normalized": {
+        "kept": 1
+      },
+      "expected_canonical": "{\"kept\":1}",
+      "expected_evidence": {
+        "removed": [
+          "/ignored"
+        ],
+        "unmatched": []
+      },
+      "expected_hash": "fdc2b438261aef15d552ca9f7563acdf82f08d9a0c8d58b0ecf21f6118394b1f"
+    }
+  ]
+}
