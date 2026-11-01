@@ -1,5 +1,6 @@
 """Real PostgreSQL assertions activated by ANVIL_TEST_DATABASE_URL."""
 
+import json
 import os
 import base64
 import asyncio
@@ -859,3 +860,59 @@ async def _job_count(engine):
         return (await connection.execute(text(
             "SELECT count(*) FROM jobs WHERE project_id = :project AND kind = 'comparison'"
         ), {"project": PROJECT})).scalar_one()
+
+
+CANARY = "sk-canary0123456789abcdefghij"
+
+
+@pytest.mark.asyncio
+async def test_a_credential_never_reaches_stored_event_rows(engine):
+    """ANVIL-067: the policy is applied on the write path, not on read."""
+    run_id, stream_id = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, run_id, stream_id,
+                 _tool_events(run_id, stream_id,
+                              arguments={"api_key": CANARY, "sku": "ABC"}))
+    async with project_connection(engine, PROJECT) as connection:
+        rows = (await connection.execute(text("""
+            SELECT payload::text, replay_safe FROM events
+            WHERE project_id = :project AND run_id = :run ORDER BY sequence
+        """), {"project": PROJECT, "run": run_id})).all()
+    assert rows, "the run stored no events"
+    for payload, replay_safe in rows:
+        assert CANARY not in payload
+        if "tool_name" in payload:
+            # A redacted exchange cannot be replayed: sending the placeholder
+            # would fabricate evidence of a call that never happened.
+            assert replay_safe is False
+
+
+@pytest.mark.asyncio
+async def test_an_exported_archive_carries_no_credential(engine):
+    """A credential must not survive into anything handed to a third party."""
+    from anvil_server.bundles import import_bundle
+
+    recording_id = await _sealed_baseline(engine, {"api_key": CANARY, "sku": "ABC"})
+    token = issue_key()
+    principal, key_id = new_uuid7(), new_uuid7()
+    async with engine.begin() as connection:
+        await connection.execute(text("""
+            INSERT INTO principals(id, organization_id, subject, kind)
+            VALUES (:id, '0199b167-0000-7000-8000-000000000001', :subject, 'service')
+        """), {"id": principal, "subject": str(principal)})
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("""
+            INSERT INTO api_keys(id, organization_id, project_id, principal_id,
+              name, key_prefix, key_hash, scopes)
+            VALUES (:id, '0199b167-0000-7000-8000-000000000001', :project,
+              :principal, :name, :prefix, :hash, ARRAY['replay:read'])
+        """), {"id": key_id, "project": PROJECT, "principal": principal,
+               "name": str(key_id), "prefix": token[:16], "hash": key_hash(token)})
+    app.state.engine = engine
+    headers = {"Authorization": f"Bearer {token}"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/projects/{PROJECT}/recordings/{recording_id}/archive", headers=headers)
+    assert response.status_code == 200, response.text
+    assert CANARY.encode() not in response.content
+    manifest, _ = import_bundle(response.content)
+    assert CANARY not in json.dumps(manifest)
