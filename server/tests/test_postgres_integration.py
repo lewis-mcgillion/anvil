@@ -940,6 +940,19 @@ async def _key(engine, scopes):
     return token
 
 
+async def _job(engine, job_id):
+    """Diagnostic detail for a job that did not run, so a failure says why."""
+    async with project_connection(engine, PROJECT) as connection:
+        row = (await connection.execute(text("""
+            SELECT status, attempts, max_attempts, error FROM jobs
+            WHERE project_id = :project AND id = :job
+        """), {"project": PROJECT, "job": job_id})).mappings().first()
+        request = (await connection.execute(text("""
+            SELECT id FROM deletion_requests WHERE project_id = :project AND job_id = :job
+        """), {"project": PROJECT, "job": job_id})).first()
+    return f"job={dict(row) if row else None} deletion_request={request is not None}"
+
+
 async def _audit_rows(engine):
     async with project_connection(engine, PROJECT) as connection:
         return (await connection.execute(text("""
@@ -1032,7 +1045,7 @@ async def test_a_deletion_destroys_the_graph_and_records_what_it_destroyed(engin
         assert requested.status_code == 202, requested.text
         deletion_id, job_id = requested.json()["deletion_id"], requested.json()["job_id"]
 
-        assert await process_deletion(engine, PROJECT, UUID(job_id))
+        assert await process_deletion(engine, PROJECT, UUID(job_id)), await _job(engine, UUID(job_id))
 
         status = await client.get(f"/v1/projects/{PROJECT}/deletions/{deletion_id}",
                                   headers=headers)
@@ -1081,7 +1094,7 @@ async def test_a_retried_deletion_does_not_delete_or_audit_twice(engine):
             headers=headers)
     assert requested.status_code == 202, requested.text
     job_id = UUID(requested.json()["job_id"])
-    assert await process_deletion(engine, PROJECT, job_id)
+    assert await process_deletion(engine, PROJECT, job_id), await _job(engine, job_id)
     async with project_connection(engine, PROJECT) as connection:
         await connection.execute(text("""
             UPDATE jobs SET status = 'queued', lease_token = NULL

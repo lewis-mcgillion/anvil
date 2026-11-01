@@ -120,14 +120,17 @@ async def process_deletion(engine, project_id: UUID, job_id: UUID) -> bool:
                 UPDATE deletion_requests SET audit_event_id = :audit
                 WHERE project_id = :project AND id = :id
             """), {"audit": audit_id, "project": project_id, "id": request["id"]})
-    except Exception:
+    except Exception as failure:
         # Nothing was deleted: the transaction that would have deleted it was
-        # rolled back by the context manager before this ran.
+        # rolled back by the context manager before this ran. The recorded
+        # error names the failure's type and not its message, because a
+        # database error message can quote the row that caused it.
         async with project_connection(engine, project_id) as connection:
             await connection.execute(text("""
-                UPDATE jobs SET error = 'deletion failed'
+                UPDATE jobs SET error = :error
                 WHERE id = :job AND project_id = :project AND lease_token = :token
-            """), {"job": job_id, "project": project_id, "token": token})
+            """), {"job": job_id, "project": project_id, "token": token,
+                   "error": "deletion failed: " + type(failure).__name__})
         try:
             await queue.complete(project_id, job_id, token, "failed")
         except ValueError:
