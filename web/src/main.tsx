@@ -14,11 +14,29 @@ class ErrorBoundary extends React.Component<React.PropsWithChildren, { failed: b
   }
 }
 
+// Which route has already been announced to assistive technology. Module
+// scope rather than a ref, because a route whose content swaps (placeholder to
+// loaded) remounts `Page`, and a per-instance ref would forget.
+let announced: string | null = null;
+
 function Page({ title, children }: React.PropsWithChildren<{ title: string }>) {
   const heading = useRef<HTMLHeadingElement>(null);
   const location = useLocation();
   useEffect(() => {
     document.title = `${title} | Anvil`;
+  }, [title]);
+  useEffect(() => {
+    // Moving focus to the heading is right on navigation, and wrong when a
+    // slow fetch resolves afterwards: by then the reader may have tabbed to
+    // the project switcher, and yanking focus back loses their place.
+    //
+    // So claim focus when the route actually changed, or when focus has been
+    // lost to the body because the element holding it was unmounted. A reader
+    // who has moved focus to something still on the page keeps it.
+    const active = document.activeElement;
+    const orphaned = !active || active === document.body;
+    if (announced === location.pathname && !orphaned) return;
+    announced = location.pathname;
     heading.current?.focus();
   }, [title, location.pathname]);
   return <><h1 ref={heading} tabIndex={-1}>{title}</h1>{children}</>;

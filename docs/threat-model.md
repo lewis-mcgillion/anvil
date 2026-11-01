@@ -175,13 +175,17 @@ deliberately seeded with secret-shaped canaries tests the pipeline.
   credentials and applies configurable JSON pointers before
   buffering/transmission; the server applies a stricter second pass even
   for direct API uploads; redactions are recorded per event and
-  replay-ineligibility is surfaced (ADR-0002, ADR-0003).
+  replay-ineligibility is surfaced (ADR-0002, ADR-0003). The server pass is
+  mandatory, not configurable, and is specified in
+  [capture-policy.md](capture-policy.md).
 - Provider credentials exist only in the broker, in operator-controlled
   storage, scoped to allowlisted provider profiles; the broker refuses
   redirects to non-allowlisted hosts and never forwards runner-supplied
   URLs (ADR-0006). Live mode is opt-in per request and per profile.
 - Auditing records reads, exports, executions and deletions without
-  storing raw prompts or tokens in logs (ADR-0002, ADR-0006).
+  storing raw prompts or tokens in logs (ADR-0002, ADR-0006). Audit rows
+  carry identifiers, counts and a closed-vocabulary reason only; see
+  [audit-and-deletion.md](audit-and-deletion.md).
 - Secret canaries are part of the test corpus: zero canaries may appear in
   persisted data, exported files, logs or reports
   ([architecture.md](architecture.md) testing gates). Release gates include
