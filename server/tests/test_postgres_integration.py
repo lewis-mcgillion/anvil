@@ -18,6 +18,8 @@ from anvil_server.jobs import JobQueue, LeaseLost
 from anvil_server.capture import create_run, ingest, seal_run
 from anvil_server.capture import queue_seal
 from anvil_server.worker import process_seal
+from anvil_server.comparisons import (ComparisonError, create_comparison, get_comparison,
+                                      get_report, list_divergences, process_comparison)
 from anvil_server.auth import issue_key, key_hash
 from anvil_server.app import app
 from httpx import ASGITransport, AsyncClient
@@ -725,3 +727,135 @@ async def test_run_creation_idempotency(engine):
     assert await create_run(engine, PROJECT, idempotency_key=key, request_hash="a" * 64) == first
     with pytest.raises(CaptureConflict):
         await create_run(engine, PROJECT, idempotency_key=key, request_hash="b" * 64)
+
+
+def _tool_events(run_id, stream_id, *, arguments):
+    """A minimal run that makes one tool call, for comparison tests."""
+    invocation = new_uuid7()
+    common = {"schema_version": "1", "run_id": run_id, "stream_id": stream_id,
+              "occurred_at": datetime.now(timezone.utc), "replay_safe": True,
+              "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "span_id": "10f067aa0ba902b8"}
+    request_id = new_uuid7()
+    return [
+        Event(**common, event_id=new_uuid7(), sequence=0, type="run.started",
+              payload={"agent": {"name": "demo"}}),
+        Event(**common, event_id=request_id, sequence=1, type="tool.requested",
+              invocation_id=invocation,
+              payload={"tool_name": "inventory.lookup", "arguments": arguments,
+                       "redactions": [], "replay_safe": True}),
+        Event(**common, event_id=new_uuid7(), sequence=2, type="tool.completed",
+              invocation_id=invocation, parent_event_ids=[request_id],
+              payload={"tool_name": "inventory.lookup", "arguments": arguments,
+                       "result": {"stock": 1}, "redactions": [], "replay_safe": True}),
+        Event(**common, event_id=new_uuid7(), sequence=3, type="run.completed",
+              payload={"outcome": "succeeded"}),
+    ]
+
+
+async def _sealed_baseline(engine, arguments):
+    run_id, stream_id = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, run_id, stream_id,
+                 _tool_events(run_id, stream_id, arguments=arguments))
+    recording = await seal_run(engine, PROJECT, run_id)
+    return UUID(recording["recording_id"])
+
+
+@pytest.mark.asyncio
+async def test_a_comparison_detects_changed_arguments_and_pages_its_findings(engine):
+    """ANVIL-046: queue, resolve, read and page a real comparison."""
+    baseline_recording = await _sealed_baseline(engine, {"sku": "ABC"})
+    candidate_run, candidate_stream = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, candidate_run, candidate_stream,
+                 _tool_events(candidate_run, candidate_stream, arguments={"sku": "XYZ"}))
+
+    queued = await create_comparison(engine, PROJECT,
+                                     baseline_recording_id=baseline_recording,
+                                     candidate_run_id=candidate_run)
+    comparison_id, job_id = queued["comparison_id"], queued["job_id"]
+
+    # Before the work runs, the comparison must not read as a pass.
+    pending = await get_comparison(engine, PROJECT, comparison_id)
+    assert pending["deterministic"] == "inconclusive"
+    assert pending["judge"] == "not_run"
+    assert pending["status"] == "queued"
+
+    assert await process_comparison(engine, PROJECT, job_id)
+    resolved = await get_comparison(engine, PROJECT, comparison_id)
+    assert resolved["deterministic"] == "fail"
+    assert resolved["infrastructure"] == "ok"
+    assert resolved["status"] == "succeeded"
+
+    page, cursor = await list_divergences(engine, PROJECT, comparison_id, limit=1)
+    assert [row["category"] for row in page] == ["changed_tool_args"]
+    assert page[0]["evidence_event_ids"]
+    # The summary locates the finding without republishing recorded values.
+    assert "XYZ" not in page[0]["summary"] and "ABC" not in page[0]["summary"]
+
+    report = await get_report(engine, PROJECT, comparison_id)
+    assert report["report_version"] and report["outcome"]["outcome"] != "pass"
+
+
+@pytest.mark.asyncio
+async def test_an_identical_candidate_passes_and_has_no_findings(engine):
+    baseline_recording = await _sealed_baseline(engine, {"sku": "ABC"})
+    candidate_run, candidate_stream = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, candidate_run, candidate_stream,
+                 _tool_events(candidate_run, candidate_stream, arguments={"sku": "ABC"}))
+    queued = await create_comparison(engine, PROJECT,
+                                     baseline_recording_id=baseline_recording,
+                                     candidate_run_id=candidate_run)
+    assert await process_comparison(engine, PROJECT, queued["job_id"])
+    resolved = await get_comparison(engine, PROJECT, queued["comparison_id"])
+    assert resolved["deterministic"] == "pass"
+    page, cursor = await list_divergences(engine, PROJECT, queued["comparison_id"])
+    # No findings is an empty page, not a missing resource.
+    assert page == [] and cursor is None
+
+
+@pytest.mark.asyncio
+async def test_comparison_inputs_are_validated_before_a_job_exists(engine):
+    baseline_recording = await _sealed_baseline(engine, {"sku": "ABC"})
+    before = await _job_count(engine)
+    with pytest.raises(ComparisonError):
+        await create_comparison(engine, PROJECT,
+                                baseline_recording_id=baseline_recording,
+                                candidate_run_id=new_uuid7())
+    with pytest.raises(ComparisonError):
+        await create_comparison(engine, PROJECT, baseline_recording_id=new_uuid7(),
+                                candidate_run_id=(await create_run(engine, PROJECT))[0])
+    assert await _job_count(engine) == before
+
+
+@pytest.mark.asyncio
+async def test_a_comparison_is_invisible_to_another_project(engine):
+    baseline_recording = await _sealed_baseline(engine, {"sku": "ABC"})
+    candidate_run, candidate_stream = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, candidate_run, candidate_stream,
+                 _tool_events(candidate_run, candidate_stream, arguments={"sku": "ABC"}))
+    queued = await create_comparison(engine, PROJECT,
+                                     baseline_recording_id=baseline_recording,
+                                     candidate_run_id=candidate_run)
+    other = UUID("0199b167-0000-7000-8000-000000000012")
+    assert await get_comparison(engine, other, queued["comparison_id"]) is None
+    assert await list_divergences(engine, other, queued["comparison_id"]) is None
+
+
+@pytest.mark.asyncio
+async def test_a_second_worker_cannot_resolve_an_already_finished_comparison(engine):
+    baseline_recording = await _sealed_baseline(engine, {"sku": "ABC"})
+    candidate_run, candidate_stream = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, candidate_run, candidate_stream,
+                 _tool_events(candidate_run, candidate_stream, arguments={"sku": "ABC"}))
+    queued = await create_comparison(engine, PROJECT,
+                                     baseline_recording_id=baseline_recording,
+                                     candidate_run_id=candidate_run)
+    assert await process_comparison(engine, PROJECT, queued["job_id"])
+    assert not await process_comparison(engine, PROJECT, queued["job_id"])
+
+
+async def _job_count(engine):
+    async with project_connection(engine, PROJECT) as connection:
+        return (await connection.execute(text(
+            "SELECT count(*) FROM jobs WHERE project_id = :project AND kind = 'comparison'"
+        ), {"project": PROJECT})).scalar_one()

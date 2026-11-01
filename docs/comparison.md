@@ -208,13 +208,13 @@ is not actionable; evidence without a category cannot be aggregated or gated.
 | `changed_prompt` | Messages or a model request differ. |
 | `changed_model` | A model invocation names a different model. |
 | `changed_tool_name` | A tool call was renamed. |
-| `changed_tool_arguments` | An aligned tool call received different arguments. |
+| `changed_tool_args` | An aligned tool call received different arguments. |
 | `changed_output` | A run output, tool result or model response differs. |
-| `changed_error` | A failure payload differs. |
-| `changed_control_flow` | Outcome, agent, adapter or a call's success changed. |
-| `changed_budget` | Reported usage differs. |
-| `missing_call` | In the baseline, absent from the candidate. |
-| `extra_call` | In the candidate, absent from the baseline. |
+| `error_difference` | A failure payload differs. |
+| `control_flow` | Outcome, agent, adapter or a call's success changed. |
+| `budget_exceeded` | Reported usage differs. |
+| `missing_tool_call` | In the baseline, absent from the candidate. |
+| `extra_tool_call` | In the candidate, absent from the baseline. |
 | `capture_gap` | Evidence is declared or known to be incomplete. |
 | `ambiguous_alignment` | A step could not be identified. |
 
@@ -333,3 +333,55 @@ restate it, which is the only place the two could drift apart.
 - Streaming model chunks are not compared chunk by chunk. The completed
   response is, so a different stream shape with an identical result is not a
   difference.
+
+# Comparison jobs and reports
+
+ANVIL-046 publishes the comparison as an asynchronous resource. Detection can
+take as long as the runs are large, so `POST /v1/projects/{id}/comparisons`
+queues work and returns a job to poll rather than blocking.
+
+## Queueing
+
+The request names a sealed baseline recording and a candidate run. Both are
+resolved *before* the job row exists: queueing work already known to be
+unresolvable would convert a client mistake into an asynchronous
+infrastructure failure, which is much harder to act on. An unknown input is a
+`404`, not a comparison that later fails.
+
+The `202` body is exactly `JobAccepted`, which forbids additional properties,
+so the new comparison's id travels in the `Location` header. An
+`Idempotency-Key` is required; a replay of the same request returns the
+original job, and the same key with a different body is a `409`.
+
+## Three statuses, stored separately
+
+| Field | Vocabulary | Means |
+| --- | --- | --- |
+| `deterministic` | `pass`/`fail`/`inconclusive` | what the detector concluded |
+| `judge` | `pass`/`fail`/`inconclusive`/`not_run` | what a judge concluded |
+| `infrastructure` | `ok`/`error`/`cancelled`/`timed_out` | whether the comparison itself ran |
+
+They are independent columns rather than one derived verdict, because a reader
+needs to know *which* layer objected. A stored comparison therefore cannot
+change its mind on re-read.
+
+The row defaults are `deterministic = 'inconclusive'` and `judge = 'not_run'`:
+an unfinished or failed comparison must never read as a pass. The job's status
+is joined in from `jobs` rather than mirrored into the comparison, so the two
+cannot disagree about whether the work is still running.
+
+No judge is implemented yet, so `judge` is always `not_run` in practice. That
+is reported honestly rather than defaulted to `pass`.
+
+## Findings are rows
+
+Divergences are stored as rows, not as a blob inside the report, because they
+are the paginated resource. Pages are ordered by the detector's deterministic
+`ordinal`, so a cursor stays valid and resumable without recomputing the
+comparison. An existing comparison with no findings is an empty page, not a
+`404` — "nothing diverged" is a real answer.
+
+`summary` locates a finding by its causal path and says what changed. It
+deliberately excludes the recorded values themselves, so listing divergences
+cannot leak payloads to a reader who is not entitled to the recording.
+`evidence_event_ids` points at the events to go and read instead.

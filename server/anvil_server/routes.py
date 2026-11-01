@@ -12,11 +12,14 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
 from .capture import CaptureConflict, create_run, ingest, seal_run, queue_seal
+from .comparisons import (ComparisonError, create_comparison, get_comparison,
+                          get_report, list_divergences)
+from .divergence import CATEGORIES as DIVERGENCE_CATEGORIES
 from .auth import bearer_token, issue_key, key_hash, validate_scopes
 from .bundles import MAX_ARTIFACT, MAX_BUNDLE, export_bundle, validate_recording_archive
 from .identifiers import new_uuid7
@@ -958,3 +961,156 @@ async def get_deletion_by_id(request: Request, deletion_id: UUID, project_id: UU
     if project_id is None:
         return failure(request, 400, "invalid_request")
     return await get_deletion(request, project_id, deletion_id)
+
+
+class ComparisonCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    baseline_recording_id: UUID
+    candidate_run_id: UUID
+    judge: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+@router.post("/projects/{project_id}/comparisons", status_code=202)
+async def create_comparison_job(request: Request, project_id: UUID, payload: ComparisonCreate):
+    """Queue a comparison. Asynchronous: poll the returned job.
+
+    Comparison is a pure read of two recordings. It queues no execution and
+    reaches no provider, so ``replay:write`` here authorizes creating the job
+    record, not running an agent.
+    """
+    engine, error = await scoped(request, project_id, "replay:write")
+    if error is not None:
+        return error
+    key = require_idempotency_key(request)
+    if key is None:
+        return failure(request, 400, "invalid_request")
+    digest = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
+    async with project_connection(engine, project_id) as connection:
+        await connection.execute(text("""
+            SELECT pg_advisory_xact_lock(hashtextextended(:lock, 0))
+        """), {"lock": str(project_id) + ":" + key})
+        previous = (await connection.execute(text("""
+            SELECT request_hash, response FROM idempotency_keys
+            WHERE project_id = :project AND key = :key
+        """), {"project": project_id, "key": key})).mappings().first()
+        if previous is not None:
+            # A replay of the same request returns the original job rather
+            # than queueing a second comparison of the same two runs.
+            if previous["request_hash"] != digest:
+                return failure(request, 409, "conflict")
+            return _accepted_comparison(project_id, previous["response"])
+    try:
+        queued = await create_comparison(
+            engine, project_id,
+            baseline_recording_id=payload.baseline_recording_id,
+            candidate_run_id=payload.candidate_run_id,
+            judge_profile=payload.judge)
+    except ComparisonError:
+        return failure(request, 404, "not_found")
+    result = {"job_id": str(queued["job_id"]),
+              "job_url": f"/v1/projects/{project_id}/jobs/{queued['job_id']}",
+              "status": queued["status"],
+              "comparison_id": str(queued["comparison_id"])}
+    async with project_connection(engine, project_id) as connection:
+        await connection.execute(text("""
+            INSERT INTO idempotency_keys(project_id, key, request_hash, status_code, response)
+            VALUES (:project, :key, :hash, 202, CAST(:response AS jsonb))
+            ON CONFLICT (project_id, key) DO NOTHING
+        """), {"project": project_id, "key": key, "hash": digest,
+               "response": json.dumps(result)})
+    return _accepted_comparison(project_id, result)
+
+
+def _accepted_comparison(project_id: UUID, record: dict) -> JSONResponse:
+    """Return the published `JobAccepted` body, with the comparison in Location.
+
+    `JobAccepted` forbids additional properties, so the new comparison's id
+    cannot ride along in the body. It is still what the caller needs next, so
+    it is advertised in `Location`, which is where a 202 conventionally says
+    where the created resource will be. The stored idempotency record keeps
+    the id so a replay produces the identical response.
+    """
+    return JSONResponse(
+        status_code=202,
+        content={key: record[key] for key in ("job_id", "job_url", "status")},
+        headers={"Location":
+                 f"/v1/projects/{project_id}/comparisons/{record['comparison_id']}"})
+
+
+@router.post("/comparisons", status_code=202)
+async def create_comparison_by_project(request: Request, payload: ComparisonCreate,
+                                       project_id: UUID | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await create_comparison_job(request, project_id, payload)
+
+
+@router.get("/projects/{project_id}/comparisons/{comparison_id}")
+async def read_comparison(request: Request, project_id: UUID, comparison_id: UUID):
+    """Return the comparison summary with its three independent statuses."""
+    engine, error = await scoped(request, project_id, "runs:read")
+    if error is not None:
+        return error
+    result = await get_comparison(engine, project_id, comparison_id)
+    return result if result else failure(request, 404, "not_found")
+
+
+@router.get("/comparisons/{comparison_id}")
+async def read_comparison_by_id(request: Request, comparison_id: UUID,
+                                project_id: UUID | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await read_comparison(request, project_id, comparison_id)
+
+
+@router.get("/projects/{project_id}/comparisons/{comparison_id}/report")
+async def read_comparison_report(request: Request, project_id: UUID, comparison_id: UUID):
+    """Return the versioned JSON report, once the job has produced one."""
+    engine, error = await scoped(request, project_id, "runs:read")
+    if error is not None:
+        return error
+    report = await get_report(engine, project_id, comparison_id)
+    return report if report else failure(request, 404, "not_found")
+
+
+@router.get("/projects/{project_id}/comparisons/{comparison_id}/divergences")
+async def list_comparison_divergences(request: Request, project_id: UUID, comparison_id: UUID,
+                                      limit: int = 100, cursor: str | None = None,
+                                      category: str | None = None):
+    """Return one stable page of findings.
+
+    Pages are cut on the detector's ordinal, which is deterministic, so a
+    cursor stays valid without the comparison being recomputed.
+    """
+    engine, error = await scoped(request, project_id, "runs:read")
+    if error is not None:
+        return error
+    if limit < 1 or limit > 500 or (category is not None and category not in DIVERGENCE_CATEGORIES):
+        return failure(request, 400, "invalid_request")
+    secret = getattr(request.app.state, "cursor_secret", None)
+    if not secret:
+        return failure(request, 503, "not_ready")
+    codec = CursorCodec(secret)
+    filters = {"category": category or "", "comparison": str(comparison_id)}
+    try:
+        after = int(codec.decode(cursor, "divergences", str(project_id), filters)) if cursor else None
+    except ValueError:
+        return failure(request, 400, "invalid_request")
+    page = await list_divergences(engine, project_id, comparison_id,
+                                  after_ordinal=after, limit=limit, category=category)
+    if page is None:
+        return failure(request, 404, "not_found")
+    items, next_ordinal = page
+    next_cursor = (codec.encode("divergences", str(project_id), str(next_ordinal), filters)
+                   if next_ordinal is not None else None)
+    return {"items": items, "next_cursor": next_cursor}
+
+
+@router.get("/comparisons/{comparison_id}/divergences")
+async def list_divergences_by_id(request: Request, comparison_id: UUID,
+                                 project_id: UUID | None = None, limit: int = 100,
+                                 cursor: str | None = None, category: str | None = None):
+    if project_id is None:
+        return failure(request, 400, "invalid_request")
+    return await list_comparison_divergences(request, project_id, comparison_id,
+                                             limit, cursor, category)
