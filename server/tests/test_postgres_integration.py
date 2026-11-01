@@ -904,7 +904,7 @@ async def test_an_exported_archive_carries_no_credential(engine):
             INSERT INTO api_keys(id, organization_id, project_id, principal_id,
               name, key_prefix, key_hash, scopes)
             VALUES (:id, '0199b167-0000-7000-8000-000000000001', :project,
-              :principal, :name, :prefix, :hash, ARRAY['replay:read'])
+              :principal, :name, :prefix, :hash, ARRAY['runs:read'])
         """), {"id": key_id, "project": PROJECT, "principal": principal,
                "name": str(key_id), "prefix": token[:16], "hash": key_hash(token)})
     app.state.engine = engine
