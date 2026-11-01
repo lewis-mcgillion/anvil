@@ -114,6 +114,69 @@ compare.
   there is nothing to clean up and no cancellation semantics. An unorderable
   run raises `playback.PlaybackError` and is not aligned at all.
 
+## Aggregation and gating
+
+Alignment and detection answer "what changed". Aggregation answers "does this
+run pass", which is a different question with a different failure mode: a bug
+here means a gate reports success when it should not. `aggregate()` therefore
+enumerates every status combination explicitly, so a state nobody thought about
+cannot fall through to a pass.
+
+Three statuses go in, and they stay independent in the report:
+
+| Status | Vocabulary |
+| --- | --- |
+| `deterministic` | `pass`, `fail`, `inconclusive` |
+| `judge` | `pass`, `fail`, `inconclusive`, `not_run` |
+| `infrastructure` | `ok`, `error`, `cancelled`, `timed_out` |
+
+One outcome comes out, with its published exit code:
+
+| Outcome | Exit code | When |
+| --- | --- | --- |
+| `passed` | 0 | deterministic pass, healthy infrastructure, no gating judge objection |
+| `failed` | 1 | deterministic failure, or a gating judge failure |
+| *invalid input* | 2 | a status outside the published vocabulary (raises `InvalidStatusError`) |
+| `infrastructure_error` | 3 | the run errored or timed out |
+| `cancelled` | 4 | the run was cancelled |
+| `inconclusive` | 5 | evidence was incomplete, or a gating judge had no verdict |
+
+Three rules decide the order, and each one exists to close a specific way a
+false pass could get through.
+
+**Infrastructure outranks everything.** If the run was cancelled, errored or
+timed out, the comparison was computed over evidence that may be truncated, so
+its verdict is not reported as the outcome. The underlying deterministic status
+is still in the report; it is simply not what the gate answers with.
+
+**Judges cannot rescue a failure.** Judge gating is off by default and must be
+enabled explicitly. Even enabled, a judge can only *withhold* a pass — never
+convert a deterministic or infrastructure failure into one. This is asserted
+over the whole table: enabling the gate can turn a pass into a non-pass, but no
+combination exists where enabling it turns a non-pass into a pass. A
+non-gating judge failure is recorded in the report and does not change the
+outcome.
+
+**Absent evidence is inconclusive, never a pass.** That includes the awkward
+case of enabling judge gating with no judge result: the gate was asked for an
+opinion it does not have, so it declines to pass.
+
+An unrecognized status is rejected rather than coerced, because a gate that
+quietly maps an unknown status onto a known one can be made to pass by sending
+it something it does not understand. Validation happens before any decision, so
+a cancelled run carrying an invalid status is still rejected rather than
+short-circuited to `cancelled`.
+
+The gate configuration is part of the report. The same three statuses produce
+different outcomes under different gates, so a report omitting it would not be
+reproducible.
+
+Aggregation is pure — no I/O, no jobs, no external calls — so it has no
+resources to clean up and no cancellation semantics of its own. It *reports* a
+cancelled run; it does not cancel anything. `gating.aggregate_comparison()` reads the
+deterministic status from a `Comparison` directly rather than having a caller
+restate it, which is the only place the two could drift apart.
+
 ## Limitations
 
 - Alignment trusts the recorded causal graph. A recording that omits
@@ -193,6 +256,69 @@ recovered pair by exact prefix substitution. A descendant that *also* changed
 has no exact counterpart and stays `missing` or `extra`, so a rename can never
 hide a second change underneath it.
 
+## Aggregation and gating
+
+Alignment and detection answer "what changed". Aggregation answers "does this
+run pass", which is a different question with a different failure mode: a bug
+here means a gate reports success when it should not. `aggregate()` therefore
+enumerates every status combination explicitly, so a state nobody thought about
+cannot fall through to a pass.
+
+Three statuses go in, and they stay independent in the report:
+
+| Status | Vocabulary |
+| --- | --- |
+| `deterministic` | `pass`, `fail`, `inconclusive` |
+| `judge` | `pass`, `fail`, `inconclusive`, `not_run` |
+| `infrastructure` | `ok`, `error`, `cancelled`, `timed_out` |
+
+One outcome comes out, with its published exit code:
+
+| Outcome | Exit code | When |
+| --- | --- | --- |
+| `passed` | 0 | deterministic pass, healthy infrastructure, no gating judge objection |
+| `failed` | 1 | deterministic failure, or a gating judge failure |
+| *invalid input* | 2 | a status outside the published vocabulary (raises `InvalidStatusError`) |
+| `infrastructure_error` | 3 | the run errored or timed out |
+| `cancelled` | 4 | the run was cancelled |
+| `inconclusive` | 5 | evidence was incomplete, or a gating judge had no verdict |
+
+Three rules decide the order, and each one exists to close a specific way a
+false pass could get through.
+
+**Infrastructure outranks everything.** If the run was cancelled, errored or
+timed out, the comparison was computed over evidence that may be truncated, so
+its verdict is not reported as the outcome. The underlying deterministic status
+is still in the report; it is simply not what the gate answers with.
+
+**Judges cannot rescue a failure.** Judge gating is off by default and must be
+enabled explicitly. Even enabled, a judge can only *withhold* a pass — never
+convert a deterministic or infrastructure failure into one. This is asserted
+over the whole table: enabling the gate can turn a pass into a non-pass, but no
+combination exists where enabling it turns a non-pass into a pass. A
+non-gating judge failure is recorded in the report and does not change the
+outcome.
+
+**Absent evidence is inconclusive, never a pass.** That includes the awkward
+case of enabling judge gating with no judge result: the gate was asked for an
+opinion it does not have, so it declines to pass.
+
+An unrecognized status is rejected rather than coerced, because a gate that
+quietly maps an unknown status onto a known one can be made to pass by sending
+it something it does not understand. Validation happens before any decision, so
+a cancelled run carrying an invalid status is still rejected rather than
+short-circuited to `cancelled`.
+
+The gate configuration is part of the report. The same three statuses produce
+different outcomes under different gates, so a report omitting it would not be
+reproducible.
+
+Aggregation is pure — no I/O, no jobs, no external calls — so it has no
+resources to clean up and no cancellation semantics of its own. It *reports* a
+cancelled run; it does not cancel anything. `gating.aggregate_comparison()` reads the
+deterministic status from a `Comparison` directly rather than having a caller
+restate it, which is the only place the two could drift apart.
+
 ## Limitations
 
 - Detection compares what the recording contains. Fields removed by SDK-side
@@ -200,7 +326,10 @@ hide a second change underneath it.
   pointer suppresses differences there by design — which is why the policy is
   part of the report.
 - Budgets are compared as recorded usage. Detection does not model cost or
-  apply thresholds; gating on a budget belongs to the aggregation layer.
+  apply thresholds.
+- Aggregation consumes the three statuses it is given. Producing the `judge`
+  and `infrastructure` statuses belongs to the judge and job layers; this
+  module decides what they mean together.
 - Streaming model chunks are not compared chunk by chunk. The completed
   response is, so a different stream shape with an identical result is not a
   difference.

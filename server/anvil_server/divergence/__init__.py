@@ -2,6 +2,19 @@
 
 from __future__ import annotations
 
+from .gating import (
+    AGGREGATION_VERSION,
+    DETERMINISTIC_STATUSES,
+    EXIT_CODES,
+    INFRASTRUCTURE_STATUSES,
+    JUDGE_STATUSES,
+    OUTCOMES,
+    Gate,
+    InvalidStatusError,
+    Outcome,
+    aggregate,
+    aggregate_comparison,
+)
 from .alignment import (
     ALIGNMENT_VERSION,
     AlignedPair,
@@ -22,16 +35,27 @@ from .detect import (
 )
 
 __all__ = [
+    "AGGREGATION_VERSION",
     "ALIGNMENT_VERSION",
-    "CATEGORIES",
-    "DETECTION_VERSION",
     "AlignedPair",
     "Alignment",
     "AlignmentError",
+    "CATEGORIES",
     "Comparison",
+    "DETECTION_VERSION",
+    "DETERMINISTIC_STATUSES",
+    "EXIT_CODES",
     "Finding",
+    "Gate",
+    "INFRASTRUCTURE_STATUSES",
+    "InvalidStatusError",
     "Invocation",
     "InvocationGraph",
+    "JUDGE_STATUSES",
+    "OUTCOMES",
+    "Outcome",
+    "aggregate",
+    "aggregate_comparison",
     "align",
     "build_graph",
     "compare",
