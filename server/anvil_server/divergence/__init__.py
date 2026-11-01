@@ -12,14 +12,28 @@ from .alignment import (
     align,
     build_graph,
 )
+from .detect import (
+    CATEGORIES,
+    DETECTION_VERSION,
+    Comparison,
+    Finding,
+    compare,
+    compare_graphs,
+)
 
 __all__ = [
     "ALIGNMENT_VERSION",
+    "CATEGORIES",
+    "DETECTION_VERSION",
     "AlignedPair",
     "Alignment",
     "AlignmentError",
+    "Comparison",
+    "Finding",
     "Invocation",
     "InvocationGraph",
     "align",
     "build_graph",
+    "compare",
+    "compare_graphs",
 ]

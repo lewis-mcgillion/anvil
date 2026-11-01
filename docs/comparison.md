@@ -123,7 +123,84 @@ compare.
   genuinely concurrent branches onto one stream will have them aligned as
   sequential duplicates, and one that splits sequential work across streams
   will see avoidable ambiguity.
-- A renamed call is reported as a `missing`/`extra` pair, not as a rename.
-  Recognising that two differently named calls are "the same step" would need
-  a similarity heuristic, which is deliberately out of scope: it would let a
-  gate pass on a guess.
+- Alignment itself reports a renamed call as a `missing`/`extra` pair, because
+  the name is part of the identity. Detection recovers the rename where it can
+  do so exactly; see below.
+
+# Detecting divergence
+
+Once the steps are aligned, `server/anvil_server/divergence/detect.py` decides
+what changed and reports it in terms an engineer can act on: not "these runs
+differ" but "`search` was called with different arguments, here are both".
+
+## Findings
+
+Every finding names one of the published diff dimensions, cites the identity it
+was found at, and carries both sides as evidence. A category without evidence
+is not actionable; evidence without a category cannot be aggregated or gated.
+
+| Category | Reported when |
+| --- | --- |
+| `changed_input` | The run input differs. |
+| `changed_prompt` | Messages or a model request differ. |
+| `changed_model` | A model invocation names a different model. |
+| `changed_tool_name` | A tool call was renamed. |
+| `changed_tool_arguments` | An aligned tool call received different arguments. |
+| `changed_output` | A run output, tool result or model response differs. |
+| `changed_error` | A failure payload differs. |
+| `changed_control_flow` | Outcome, agent, adapter or a call's success changed. |
+| `changed_budget` | Reported usage differs. |
+| `missing_call` | In the baseline, absent from the candidate. |
+| `extra_call` | In the candidate, absent from the baseline. |
+| `capture_gap` | Evidence is declared or known to be incomplete. |
+| `ambiguous_alignment` | A step could not be identified. |
+
+Findings are deduplicated and ordered by identity depth, then identity, then
+published category order, so run-level findings come first and nested calls
+follow their parents. The order depends only on content, never on the order
+events arrived in.
+
+## Status
+
+The published `deterministic` status follows two rules:
+
+- An observed difference is a `fail`, even alongside missing evidence. A real
+  change is not made uncertain by an unrelated gap.
+- Missing evidence alone — a capture gap, an unresolved invocation, or anything
+  less than an `exact` alignment — is `inconclusive`. It is never a `pass`.
+
+A `pass` therefore means: complete evidence, exact alignment, no differences.
+
+## Normalization
+
+All values are compared through an explicit, versioned
+`NormalizationPolicy`, so key order and number formatting are not differences
+but genuine changes are. The policy descriptor is recorded in the report and
+contributes to `comparison_hash()`: two reports that reached the same verdict
+under different policies are not the same report and do not hash alike.
+
+## Recovering renames
+
+A renamed call cannot align, because the name is part of the identity, so it
+arrives as one `missing` and one `extra`. Detection recovers it, but only under
+an exact structural rule: the two must share a parent, a kind and an ordinal,
+and must be the only missing and the only extra call in that group. Where more
+than one candidate exists there is no unique answer, and both stay `missing`
+and `extra` rather than being paired on a guess.
+
+Because a rename moves the whole subtree, descendants are re-based under the
+recovered pair by exact prefix substitution. A descendant that *also* changed
+has no exact counterpart and stays `missing` or `extra`, so a rename can never
+hide a second change underneath it.
+
+## Limitations
+
+- Detection compares what the recording contains. Fields removed by SDK-side
+  redaction before capture are not visible to it, and a policy that ignores a
+  pointer suppresses differences there by design — which is why the policy is
+  part of the report.
+- Budgets are compared as recorded usage. Detection does not model cost or
+  apply thresholds; gating on a budget belongs to the aggregation layer.
+- Streaming model chunks are not compared chunk by chunk. The completed
+  response is, so a different stream shape with an identical result is not a
+  difference.
