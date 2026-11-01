@@ -10,6 +10,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 
+from ._spool import Spool, SpoolError
 from ._transport import CaptureError, CaptureIncomplete, Transport, acknowledged, retry_after
 from ._types import Event, Sequence, timestamp, uuid7
 
@@ -61,8 +62,9 @@ class _Entry:
 
 
 class Exporter:
-    def __init__(self, transport: Transport, config: ExporterConfig = ExporterConfig()) -> None:
-        self._transport, self.config = transport, config
+    def __init__(self, transport: Transport, config: ExporterConfig = ExporterConfig(),
+                 spool: Spool | None = None) -> None:
+        self._transport, self.config, self._spool = transport, config, spool
         self._condition = threading.Condition()
         self._queue: deque[_Entry] = deque()
         self._gaps: dict[tuple[str, str], _Entry] = {}
@@ -146,6 +148,20 @@ class Exporter:
                 self._condition.notify_all()
             self._thread.join(max(0.0, deadline - time.monotonic()))
 
+    def _persist(self, event: Event) -> None:
+        """Best-effort hand-off to the optional crash-recovery spool.
+
+        A spool failure is never allowed to become a capture failure: the
+        event is already lost from the server's point of view, and raising
+        here would only replace a recorded gap with an exception.
+        """
+        if self._spool is None:
+            return
+        try:
+            self._spool.store(event)
+        except (SpoolError, OSError):
+            return
+
     def _send(self, entries: list[_Entry]) -> None:
         body = b'{"events":[' + b",".join(e.wire for e in entries) + b"]}"
         key = uuid7()
@@ -211,6 +227,10 @@ class Exporter:
                     self._failed += 1
                     if not control:
                         for entry in entries:
+                            # Spooled evidence survives this process; the gap
+                            # still stands, because the server has not accepted
+                            # the event and may never be given it.
+                            self._persist(entry.event)
                             self._gap(entry.event, "exporter_failure", entry.sequence)
             finally:
                 with self._condition:

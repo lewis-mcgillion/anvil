@@ -207,6 +207,33 @@ See [faults.md](faults.md).
 
 See [comparison.md](comparison.md).
 
+## Crash-recovery spool
+
+- The spool is off unless a caller asks for it. — proof:
+  `sdk/python/tests/test_spool.py::TestOptIn::test_a_client_spools_nothing_unless_asked`
+- An unredacted event never reaches the disk. — proof:
+  `sdk/python/tests/test_spool.py::TestOnlyRedactedEvents::test_an_unredacted_event_never_reaches_the_disk`
+- Spooled evidence carries the same redactions as exported evidence. —
+  proof:
+  `sdk/python/tests/test_spool.py::TestExporterIntegration::test_spooled_evidence_is_still_redacted`
+- The spool directory and its records are private, and a shared directory
+  is refused. — proof:
+  `sdk/python/tests/test_spool.py::TestPrivacy::test_a_world_readable_directory_is_refused`
+- A full spool refuses new records rather than evicting old ones. — proof:
+  `sdk/python/tests/test_spool.py::TestQuotas::test_a_full_spool_refuses_rather_than_evicting`
+- A record older than the configured age is deleted unread. — proof:
+  `sdk/python/tests/test_spool.py::TestExpiry::test_an_expired_record_is_deleted_unread`
+- A truncated or tampered record is dropped, and does not hide the intact
+  records around it. — proof:
+  `sdk/python/tests/test_spool.py::TestCorruption::test_one_corrupt_record_does_not_hide_the_others`
+- A drain deletes a record only after the server accepts it. — proof:
+  `sdk/python/tests/test_spool.py::TestRecoveryAndDrain::test_a_failed_drain_keeps_everything_it_did_not_confirm`
+- Evidence written before a crash is readable by the next process. —
+  proof:
+  `sdk/python/tests/test_spool.py::TestExporterIntegration::test_a_permanently_failed_export_survives_the_process`
+
+See [sdk.md](sdk.md).
+
 ## HTTP surface
 
 - Every response, including an error, forbids loading or executing

@@ -15,6 +15,7 @@ from anvil_schema import ValidationError, validate
 
 from ._exporter import Exporter, ExporterConfig, ExportStatus, encode
 from ._redaction import RedactionPolicy
+from ._spool import Spool, SpoolConfig
 from ._transport import CaptureError, HTTPTransport, Transport
 from ._types import Event, EventType, JSON, Sequence, check_uuid7, timestamp, uuid7
 
@@ -39,13 +40,17 @@ class _ClientBase:
         *, project_id: str | None = None, transport: Transport | None = None,
         redaction: RedactionPolicy = RedactionPolicy(),
         exporter: ExporterConfig = ExporterConfig(), schema_version: str = "1",
+        spool: SpoolConfig | None = None,
     ) -> None:
         if schema_version != "1":
             raise ValueError("only frozen schema version 1 is supported")
         self.project_id = check_uuid7(project_id) if project_id is not None else None
         self.redaction = redaction
         self._transport = transport if transport is not None else HTTPTransport(base_url, api_key)
-        self._exporter = Exporter(self._transport, exporter)
+        # Opt-in: writing capture evidence to disk is a privacy decision, so
+        # there is no default directory and no implicit spooling.
+        self.spool = Spool(spool) if spool is not None else None
+        self._exporter = Exporter(self._transport, exporter, self.spool)
 
     @property
     def status(self) -> ExportStatus:
