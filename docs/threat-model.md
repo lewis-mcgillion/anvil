@@ -150,7 +150,11 @@ injection rendered in the dashboard.
   recording's tools (ADR-0001, ADR-0004).
 - Browser surfaces apply CSP, CSRF and CORS controls plus escaping of
   untrusted payload rendering (boundary B2,
-  [architecture.md](architecture.md)).
+  [architecture.md](architecture.md)). Every response is
+  `default-src 'none'` and `nosniff`, cross-origin access is deny by default
+  with no credentials ever allowed, and a state-changing request from an
+  unknown browser origin is refused before it reaches a route; see
+  [http-security.md](http-security.md).
 
 **Residual risk.** A novel parser bug in archive/YAML handling remains
 possible; strict rejection and the adversarial corpus narrow but do not
