@@ -2,6 +2,8 @@
 
 - [Architecture and technical plan](architecture.md) — the baseline contract:
   execution semantics, APIs, storage, security rules, testing and milestones.
+- [What Anvil guarantees](guarantees.md) — every claim with the test that
+  proves it, and an explicit list of what is not guaranteed.
 - [Architecture decision records](adr/README.md) — binding decisions for
   execution modes, trust boundaries, storage, isolation, replay and the
   model broker.
@@ -16,4 +18,5 @@
   cleanup.
 
 Documentation is validated in CI by `scripts/check_docs.py` (docs checks
-workflow).
+workflow) and by `tests/test_guarantees.py`, which fails if a documented
+guarantee cites a test that does not exist.
