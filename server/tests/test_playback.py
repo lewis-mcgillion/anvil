@@ -204,15 +204,15 @@ class TestProjection:
             event("e0", 0, "model.requested", invocation="inv-m",
                   payload={"model": "gpt", "request": {"messages": []}}),
             event("e1", 1, "model.chunk", invocation="inv-m", parents=("e0",),
-                  payload={"delta": "Hel"}),
+                  payload={"chunk": "Hel"}),
             event("e2", 2, "model.chunk", invocation="inv-m", parents=("e1",),
-                  payload={"delta": "lo"}),
+                  payload={"chunk": "lo"}),
             event("e3", 3, "model.completed", invocation="inv-m", parents=("e2",),
                   payload={"response": {"text": "Hello"}}),
         ]
         projection = project(events)
         invocation = projection["invocations"][0]
-        assert [chunk["delta"] for chunk in invocation["chunks"]] == ["Hel", "lo"]
+        assert [chunk["chunk"] for chunk in invocation["chunks"]] == ["Hel", "lo"]
         assert invocation["status"] == "completed"
 
     def test_unresolved_invocation_blocks_replay(self):
