@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
 from .database import engine_for, project_connection
+from .http_security import SecurityMiddleware
 from .bundles import MAX_BUNDLE
 from .playback import (
     PROJECTION_VERSION,
@@ -125,6 +126,9 @@ class BodyLimitMiddleware:
 
 
 app.add_middleware(BodyLimitMiddleware)
+# Outermost, so every response -- including a rejected oversized body and an
+# unhandled error -- carries the security headers.
+app.add_middleware(SecurityMiddleware)
 
 
 @app.exception_handler(RequestValidationError)

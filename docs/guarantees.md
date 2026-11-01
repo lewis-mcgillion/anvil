@@ -207,6 +207,29 @@ See [faults.md](faults.md).
 
 See [comparison.md](comparison.md).
 
+## HTTP surface
+
+- Every response, including an error, forbids loading or executing
+  anything. — proof:
+  `server/tests/test_http_security.py::TestSecurityHeaders::test_every_response_forbids_loading_and_executing_anything`
+- A reflected value is never served as a document. — proof:
+  `server/tests/test_http_security.py::TestXss::test_a_reflected_value_is_never_served_as_html`
+- An unconfigured deployment allows no browser origin. — proof:
+  `server/tests/test_http_security.py::TestCorsIsDenyByDefault::test_an_unconfigured_deployment_allows_no_origin`
+- A near-miss origin is never matched. — proof:
+  `server/tests/test_http_security.py::TestCorsIsDenyByDefault::test_a_near_miss_origin_is_refused`
+- Cross-origin credentials are never allowed. — proof:
+  `server/tests/test_http_security.py::TestCorsIsDenyByDefault::test_credentials_are_never_allowed`
+- A state-changing request from an unknown browser origin is refused
+  before it reaches a route. — proof:
+  `server/tests/test_http_security.py::TestCsrf::test_a_cross_site_state_change_is_refused_before_the_route`
+- A cookie cannot authenticate anything. — proof:
+  `server/tests/test_http_security.py::TestCsrf::test_a_cookie_cannot_authenticate_a_state_change`
+- An oversized body is refused, and the refusal is hardened too. — proof:
+  `server/tests/test_http_security.py::TestOversizedPayloads::test_a_refused_body_is_still_hardened`
+
+See [http-security.md](http-security.md).
+
 ## Suites
 
 - A suite file is data: compiling it executes nothing and resolves no remote

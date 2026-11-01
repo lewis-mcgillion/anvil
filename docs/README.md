@@ -12,6 +12,9 @@
   redaction costs a recording.
 - [Audit trail, deletion and privacy](audit-and-deletion.md) — what is
   audited, what an audit row may contain, and what deleting a run destroys.
+- [Hardening the HTTP surface](http-security.md) — the headers on every
+  response, deny-by-default cross-origin access, and why CSRF is removed
+  rather than mitigated.
 - [Threat model](threat-model.md) — assets, adversaries, trust boundaries,
   threat scenarios (untrusted code, malicious recordings, secret leakage,
   tenant isolation) and operational rules for errors, cancellation and
