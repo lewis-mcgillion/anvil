@@ -1,7 +1,9 @@
 """Static fail-closed admission checks for future live-model dispatch."""
 
 from dataclasses import dataclass
+import asyncio
 import ipaddress
+import socket
 import time
 from urllib.parse import urlsplit
 
@@ -80,3 +82,27 @@ def admit_live_model(*, mode: str, approved: bool, profile_endpoint: str,
             or address is not None or parsed.port not in (None, 443)):
         raise BrokerDenied("Model endpoint is not an approved HTTPS profile endpoint")
     budget.validate()
+
+
+async def resolve_public_endpoint(endpoint: str) -> tuple[str, ...]:
+    hostname = urlsplit(endpoint).hostname
+    if not hostname:
+        raise BrokerDenied("Model endpoint has no hostname")
+    try:
+        addresses = await asyncio.get_running_loop().getaddrinfo(
+            hostname, 443, type=socket.SOCK_STREAM,
+        )
+    except OSError as error:
+        raise BrokerDenied("Model endpoint DNS resolution failed") from error
+    resolved = set()
+    for entry in addresses:
+        try:
+            address = ipaddress.ip_address(entry[4][0])
+        except (ValueError, IndexError, TypeError) as error:
+            raise BrokerDenied("Model endpoint DNS returned an invalid address") from error
+        if not address.is_global:
+            raise BrokerDenied("Model endpoint DNS resolved to a non-public address")
+        resolved.add(str(address))
+    if not resolved:
+        raise BrokerDenied("Model endpoint DNS returned no addresses")
+    return tuple(sorted(resolved))

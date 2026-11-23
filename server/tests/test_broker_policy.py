@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from anvil_server.broker_policy import BrokerDenied, BudgetLedger, LiveBudget, admit_live_model
+from anvil_server.broker_policy import BrokerDenied, BudgetLedger, LiveBudget, admit_live_model, resolve_public_endpoint
 
 
 def permitted(**changes):
@@ -56,3 +56,22 @@ def test_broker_budget_cancellation_and_expired_wall_time():
     expired.started -= 2
     with pytest.raises(BrokerDenied, match="wall-time"):
         expired.charge(model_calls=1)
+
+
+@pytest.mark.asyncio
+async def test_broker_dns_only_accepts_public_addresses(monkeypatch):
+    import asyncio
+    import socket
+
+    async def addresses(host, port, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", port))]
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", addresses)
+    assert await resolve_public_endpoint("https://models.example.com/v1/responses") == ("8.8.8.8",)
+
+    async def private_addresses(host, port, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", port))]
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", private_addresses)
+    with pytest.raises(BrokerDenied, match="non-public"):
+        await resolve_public_endpoint("https://models.example.com/v1/responses")
