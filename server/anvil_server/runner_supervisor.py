@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 
 from .runner_pb2 import RunnerMessage, SupervisorMessage, RUN_OUTCOME_UNSPECIFIED
 from .runner_policy import IsolationUnavailable
+from .runner_fixtures import RecordedRunnerFixtures
 
 
 MAX_WIRE_BYTES = 65_536
@@ -116,3 +117,21 @@ async def supervise_recorded_messages(reader: asyncio.StreamReader, writer: asyn
                 return message.finished.outcome
             else:
                 raise IsolationUnavailable("Runner requested unsupported supervisor action")
+
+
+async def run_recorded_protocol(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
+                                *, adapter: str, config: SupervisorMessage,
+                                fixtures: RecordedRunnerFixtures,
+                                persist_events: Callable[[object], Awaitable[None]],
+                                timeout_seconds: float = 60) -> int:
+    try:
+        async with asyncio.timeout(timeout_seconds):
+            await handshake(reader, writer, config, adapter=adapter)
+            return await supervise_recorded_messages(
+                reader, writer, run_id=config.config.run_id,
+                persist_events=persist_events,
+                resolve_model=fixtures.resolve_model, resolve_tool=fixtures.resolve_tool,
+                finalize_fixtures=fixtures.finalize, timeout_seconds=timeout_seconds,
+            )
+    finally:
+        fixtures.fixtures.close()

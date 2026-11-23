@@ -4,7 +4,9 @@ import pytest
 
 from anvil_server.runner_pb2 import RunnerMessage, SupervisorMessage
 from anvil_server.runner_policy import IsolationUnavailable
-from anvil_server.runner_supervisor import handshake, read_runner_message, receive_terminal_outcome, supervise_recorded_messages
+from anvil_server.runner_supervisor import handshake, read_runner_message, receive_terminal_outcome, supervise_recorded_messages, run_recorded_protocol
+from anvil_server.runner_fixtures import RecordedRunnerFixtures
+from anvil_server.replay.fixtures import FixtureSession
 
 
 def framed(message):
@@ -221,3 +223,30 @@ async def test_successful_runner_cannot_skip_fixture_finalization():
 
     with pytest.raises(IsolationUnavailable, match="fixture verification"):
         await supervise_recorded_messages(reader, None, run_id="run", persist_events=persist)
+
+
+@pytest.mark.asyncio
+async def test_recorded_protocol_handshake_through_terminal_completion():
+    reader = asyncio.StreamReader()
+    reader.feed_data(framed(RunnerMessage(hello={
+        "protocol_version": "1", "runner_version": "1.0", "adapter": "google-adk",
+        "adapter_version": "2.0",
+    })) + framed(RunnerMessage(finished={"outcome": 1})))
+    reader.feed_eof()
+    outgoing = []
+
+    class Writer:
+        def write(self, data):
+            outgoing.append(data)
+
+        async def drain(self):
+            pass
+
+    async def persist(batch):
+        pass
+
+    config = SupervisorMessage(config={"run_id": "run", "attempt_id": "attempt"})
+    assert await run_recorded_protocol(reader, Writer(), adapter="google-adk", config=config,
+                                       fixtures=RecordedRunnerFixtures(FixtureSession([])),
+                                       persist_events=persist) == 1
+    assert outgoing == [framed(config), framed(SupervisorMessage(finished={}))]
