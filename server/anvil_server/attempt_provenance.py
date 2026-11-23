@@ -148,6 +148,9 @@ async def run_leased_attempt(
     details: Mapping[str, object], execute: Callable[[], Awaitable[object]],
     seal: Callable[[dict[str, object]], Awaitable[None]],
 ) -> dict[str, object] | None:
+    validate_attempt(details)
+    if type(details["budgets"].get("wall_seconds")) is not int or details["budgets"]["wall_seconds"] <= 0:
+        raise InvalidAttempt("Candidate wall-time budget must be positive")
     if await queue.acquire_job(project_id, job_id, lease_token) is None:
         return None
     evidence = await execute_attempt(details, execute, seal)

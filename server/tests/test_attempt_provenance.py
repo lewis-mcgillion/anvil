@@ -270,6 +270,25 @@ async def test_unavailable_lease_never_runs_candidate():
 
 
 @pytest.mark.asyncio
+async def test_invalid_attempt_cannot_consume_job_lease():
+    from uuid import UUID
+
+    class Queue:
+        async def acquire_job(self, *args):
+            raise AssertionError("Invalid attempt must not acquire lease")
+
+    async def forbidden():
+        raise AssertionError("Invalid attempt must not run")
+
+    details = sample()
+    details["budgets"] = {"model_calls": 2}
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    with pytest.raises(InvalidAttempt, match="wall-time"):
+        await run_leased_attempt(Queue(), identifier, identifier, identifier,
+                                 details, forbidden, forbidden)
+
+
+@pytest.mark.asyncio
 async def test_persisted_attempt_writes_evidence_before_job_completion(monkeypatch):
     from uuid import UUID
 
