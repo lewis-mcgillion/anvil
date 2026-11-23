@@ -190,6 +190,10 @@ async def run_leased_attempt(
                 await heartbeat_task
                 raise InvalidAttempt("Candidate lease renewal stopped unexpectedly")
         evidence = await attempt_task
+        terminal_status = "succeeded" if evidence["outcome"] == "succeeded" else (
+            "cancelled" if evidence["outcome"] == "cancelled" else "failed"
+        )
+        await queue.complete(project_id, job_id, lease_token, terminal_status)
     finally:
         if not attempt_task.done():
             attempt_task.cancel()
@@ -197,10 +201,6 @@ async def run_leased_attempt(
         if heartbeat_task is not None:
             heartbeat_task.cancel()
             await asyncio.gather(heartbeat_task, return_exceptions=True)
-    terminal_status = "succeeded" if evidence["outcome"] == "succeeded" else (
-        "cancelled" if evidence["outcome"] == "cancelled" else "failed"
-    )
-    await queue.complete(project_id, job_id, lease_token, terminal_status)
     return evidence
 
 
