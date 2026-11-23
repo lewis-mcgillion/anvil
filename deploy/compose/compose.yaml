@@ -1,0 +1,40 @@
+name: anvil-local
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: anvil
+      POSTGRES_PASSWORD: ${ANVIL_POSTGRES_PASSWORD:?Set ANVIL_POSTGRES_PASSWORD}
+      POSTGRES_DB: anvil
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anvil -d anvil"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/containers/api.Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ANVIL_DATABASE_URL: postgresql+asyncpg://anvil:${ANVIL_POSTGRES_PASSWORD:?Set ANVIL_POSTGRES_PASSWORD}@postgres:5432/anvil
+      ANVIL_CURSOR_SECRET: ${ANVIL_CURSOR_SECRET:?Set ANVIL_CURSOR_SECRET}
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+volumes:
+  database:
