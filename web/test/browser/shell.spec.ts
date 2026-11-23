@@ -70,6 +70,26 @@ test("watching a run refreshes its capture status without executing it", async (
   await expect(page.getByRole("note")).toContainText("Replay eligibility is not verified");
 });
 
+test("run watch accepts SSE CRLF delimiters", async ({ page }) => {
+  await projects(page, [first]);
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  let refreshed = false;
+  await page.route("**/v1/runs?*", (route) => route.fulfill({ json: {
+    items: [{ id: runId, project_id: first.id, agent_name: "Inventory",
+      capture_state: refreshed ? "sealed_incomplete" : "open", execution_state: "failed" }],
+    next_cursor: null,
+  } }));
+  await page.route(`**/v1/projects/${first.id}/runs/${runId}/watch`, (route) => {
+    refreshed = true;
+    return route.fulfill({ contentType: "text/event-stream", body: "event: updated\r\ndata: {}\r\n\r\n" });
+  });
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByRole("button", { name: "Watch Inventory" }).click();
+  await expect(page.getByText("sealed_incomplete; failed", { exact: false })).toBeVisible();
+});
+
 test("keyboard-only sign in, project switching, routing, skip link and sign out", async ({ page }) => {
   await projects(page);
   await page.goto("/");

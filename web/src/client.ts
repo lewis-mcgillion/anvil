@@ -18,11 +18,16 @@ export async function watchRunEvents(token: string, projectId: string, runId: st
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let pendingCarriageReturn = false;
   try {
     while (!signal.aborted) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+      let chunk = decoder.decode(value, { stream: true });
+      if (pendingCarriageReturn) chunk = "\r" + chunk;
+      pendingCarriageReturn = chunk.endsWith("\r");
+      if (pendingCarriageReturn) chunk = chunk.slice(0, -1);
+      buffer += chunk.replace(/\r\n?/g, "\n");
       if (buffer.length > 1024 * 1024) throw new Error("The event stream exceeded its frame limit.");
       let boundary = buffer.indexOf("\n\n");
       while (boundary !== -1) {
