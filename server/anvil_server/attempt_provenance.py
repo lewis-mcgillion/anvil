@@ -34,6 +34,15 @@ def validate_attempt(details: Mapping[str, object]) -> None:
         raise InvalidAttempt("Missing candidate adapter identity")
     if type(details["budgets"]) is not dict or not details["budgets"]:
         raise InvalidAttempt("Candidate must declare execution budgets")
+    for budget_name, budget_value in details["budgets"].items():
+        if budget_name not in {"wall_seconds", "model_calls", "tool_calls",
+                               "input_tokens", "output_tokens", "max_spend_micro_usd"}:
+            raise InvalidAttempt("Candidate contains an unsupported budget")
+        if type(budget_value) is not int or budget_value <= 0:
+            raise InvalidAttempt("Candidate budgets must be positive integers")
+    for identifier in ("reexecution_id", "recording_id", "agent_version_id"):
+        if type(details[identifier]) is not str or not details[identifier].strip():
+            raise InvalidAttempt("Candidate identity fields must be nonempty")
 
 
 async def execute_attempt(

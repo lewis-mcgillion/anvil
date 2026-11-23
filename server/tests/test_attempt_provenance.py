@@ -19,6 +19,9 @@ def test_candidate_attempt_requires_explicit_provenance():
     ("image_digest", "runner:latest"), ("model_mode", "implicit"),
     ("fixture_policy", "best_effort"), ("seed", -1),
     ("adapter", ""), ("budgets", {}),
+    ("reexecution_id", ""), ("budgets", {"wall_seconds": 0}),
+    ("budgets", {"wall_seconds": True}),
+    ("budgets", {"unexpected": 10}),
 ])
 def test_incomplete_or_unsafe_candidate_is_rejected(key, value):
     attempt = sample()
