@@ -75,6 +75,13 @@ fixes the isolation mechanism and the supervisor protocol.
 
 ## Errors, cancellation and cleanup
 
+The Python `RunnerLaunch.validate()` policy checks immutable digests and
+mandatory isolation flags before any future supervisor launches a runner.
+It does not enforce OS isolation by itself: the supervisor must independently
+verify the actual container/namespace, egress, mount and UDS settings. No
+production re-execution should be enabled until that enforcement and the
+adversarial probes in ANVIL-037 are implemented and tested.
+
 - Runner startup, heartbeat loss, budget exhaustion and protocol violations
   produce `infrastructure` outcomes (`error` or `timed_out`) that never
   read as passes; the candidate run is sealed with the failure evidence.
