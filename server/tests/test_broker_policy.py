@@ -203,3 +203,43 @@ async def test_live_broker_dns_delay_cannot_bypass_wall_budget(monkeypatch):
     with pytest.raises(BrokerDenied, match="transport failed"):
         await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
                                   credential="operator-secret", payload={}, ledger=ledger)
+
+
+@pytest.mark.asyncio
+async def test_live_broker_concurrent_requests_cannot_bypass_call_budget(monkeypatch):
+    import asyncio
+    import json
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint", lambda endpoint: asyncio.sleep(0, result=("8.8.8.8",)))
+
+    class Writer:
+        def write(self, data):
+            pass
+
+        async def drain(self):
+            await asyncio.sleep(0)
+
+        def close(self):
+            pass
+
+        async def wait_closed(self):
+            pass
+
+    async def connect(*args, **kwargs):
+        content = json.dumps({"usage": {"input_tokens": 1}}).encode()
+        reader = asyncio.StreamReader()
+        reader.feed_data(f"HTTP/1.1 200 OK\r\nContent-Length: {len(content)}\r\n\r\n".encode() + content)
+        reader.feed_eof()
+        return reader, Writer()
+
+    monkeypatch.setattr(asyncio, "open_connection", connect)
+    endpoint = "https://models.example.com/v1/responses"
+    ledger = BudgetLedger(LiveBudget(model_calls=1))
+    async def request():
+        return await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+                                         credential="operator-secret", payload={}, ledger=ledger)
+
+    results = await asyncio.gather(request(), request(), return_exceptions=True)
+    assert sum(isinstance(result, dict) for result in results) == 1
+    assert sum(isinstance(result, BrokerDenied) for result in results) == 1
+    assert ledger.model_calls == 1

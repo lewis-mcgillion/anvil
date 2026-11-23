@@ -43,6 +43,7 @@ class BudgetLedger:
         self.output_tokens = 0
         self.micro_usd = 0
         self.cancelled = False
+        self._dispatch_lock = asyncio.Lock()
 
     def charge(self, *, model_calls: int = 0, tool_calls: int = 0,
                input_tokens: int = 0, output_tokens: int = 0, micro_usd: int = 0) -> None:
@@ -70,6 +71,17 @@ class BudgetLedger:
 async def dispatch_live_model(*, endpoint: str, profile_endpoint: str, approved: bool,
                               credential: str, payload: dict, ledger: BudgetLedger,
                               max_response_bytes: int = 1_048_576) -> dict:
+    async with ledger._dispatch_lock:
+        return await _dispatch_live_model_locked(
+            endpoint=endpoint, profile_endpoint=profile_endpoint, approved=approved,
+            credential=credential, payload=payload, ledger=ledger,
+            max_response_bytes=max_response_bytes,
+        )
+
+
+async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, approved: bool,
+                                      credential: str, payload: dict, ledger: BudgetLedger,
+                                      max_response_bytes: int) -> dict:
     admit_live_model(mode="live", approved=approved, profile_endpoint=profile_endpoint,
                      requested_endpoint=endpoint, budget=ledger.budget)
     if not credential or not credential.isascii() or any(ord(character) < 33 or ord(character) > 126 for character in credential):
