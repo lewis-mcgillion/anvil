@@ -136,7 +136,8 @@ async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, a
         raise BrokerDenied("Model request is not valid JSON") from error
     if len(body) > 1_048_576:
         raise BrokerDenied("Model request exceeds broker size limit")
-    ledger.charge(model_calls=1)
+    estimated_input_tokens = (len(body) + 3) // 4
+    ledger.charge(model_calls=1, input_tokens=estimated_input_tokens)
     hostname = urlsplit(endpoint).hostname
     reader = writer = None
     try:
@@ -179,7 +180,10 @@ async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, a
             usage = response.get("usage", {})
             if not isinstance(usage, dict):
                 raise BrokerDenied("Model provider usage is invalid")
-            ledger.charge(input_tokens=usage.get("input_tokens", 0),
+            actual_input_tokens = usage.get("input_tokens", 0)
+            if type(actual_input_tokens) is not int or actual_input_tokens < 0:
+                raise BrokerDenied("Model provider usage is invalid")
+            ledger.charge(input_tokens=max(0, actual_input_tokens - estimated_input_tokens),
                           output_tokens=usage.get("output_tokens", 0),
                           micro_usd=usage.get("cost_micro_usd", 0))
             return response

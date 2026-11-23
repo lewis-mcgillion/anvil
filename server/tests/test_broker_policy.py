@@ -145,7 +145,7 @@ async def test_live_broker_pins_dns_and_accounts_provider_usage(monkeypatch):
     result = await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
                                        credential="operator-secret", payload={"model": "test"}, ledger=ledger)
     assert result["usage"]["input_tokens"] == 3
-    assert (ledger.model_calls, ledger.input_tokens, ledger.output_tokens) == (1, 3, 2)
+    assert (ledger.model_calls, ledger.input_tokens, ledger.output_tokens) == (1, 4, 2)
     assert ledger.micro_usd == 100
     assert b"Authorization: Bearer operator-secret" in sent[0]
 
@@ -335,3 +335,20 @@ async def test_live_broker_cancellation_aborts_active_resolution(monkeypatch):
     with pytest.raises(BrokerDenied, match="cancelled"):
         await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
                                   credential="operator-secret", payload={}, ledger=ledger)
+
+
+@pytest.mark.asyncio
+async def test_live_broker_denies_oversize_prompt_before_dns(monkeypatch):
+    calls = []
+
+    async def unexpected_dns(endpoint):
+        calls.append(endpoint)
+        raise AssertionError("DNS resolution must not be attempted")
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint", unexpected_dns)
+    endpoint = "https://models.example.com/v1/responses"
+    ledger = BudgetLedger(LiveBudget(input_tokens=1))
+    with pytest.raises(BrokerDenied, match="exhausted"):
+        await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+                                  credential="operator-secret", payload={"prompt": "too long"}, ledger=ledger)
+    assert calls == []
