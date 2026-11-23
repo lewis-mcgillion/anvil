@@ -50,6 +50,10 @@ def container_arguments(launch: RunnerLaunch, socket_directory: Path, seccomp_pr
     socket_path = socket_directory / "supervisor.sock"
     if socket_path.is_symlink() or not socket_path.exists() or not stat.S_ISSOCK(socket_path.stat().st_mode):
         raise IsolationUnavailable("Runner supervisor socket is missing")
+    if socket_directory.stat().st_uid != 65534 or socket_path.stat().st_uid != 65534:
+        raise IsolationUnavailable("Runner socket must be owned by the sandbox identity")
+    if not socket_directory.stat().st_mode & stat.S_IXUSR or not socket_path.stat().st_mode & stat.S_IWUSR:
+        raise IsolationUnavailable("Runner socket must be accessible to the sandbox identity")
     return (
         "docker", "run", "--rm", "--network=none", "--read-only", "--cap-drop=ALL",
         "--security-opt=no-new-privileges", f"--security-opt=seccomp={seccomp_profile}",

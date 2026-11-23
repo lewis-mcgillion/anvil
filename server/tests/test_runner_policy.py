@@ -1,5 +1,6 @@
 from dataclasses import replace
 import asyncio
+from types import SimpleNamespace
 import socket
 
 import pytest
@@ -38,7 +39,17 @@ def test_container_arguments_enforce_isolation(tmp_path):
     profile.chmod(0o600)
     with socket.socket(socket.AF_UNIX) as supervisor:
         supervisor.bind(str(directory / "supervisor.sock"))
-        arguments = container_arguments(safe_launch(), directory, profile)
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            original_stat = type(directory).stat
+
+            def stat_as_sandbox_identity(path, *args, **kwargs):
+                result = original_stat(path, *args, **kwargs)
+                if path == directory or path == directory / "supervisor.sock":
+                    return SimpleNamespace(st_mode=result.st_mode, st_uid=65534)
+                return result
+
+            monkeypatch.setattr(type(directory), "stat", stat_as_sandbox_identity)
+            arguments = container_arguments(safe_launch(), directory, profile)
         assert "--network=none" in arguments
         assert "--cap-drop=ALL" in arguments
         assert "--read-only" in arguments
@@ -61,6 +72,19 @@ def test_container_arguments_reject_missing_socket_and_unsafe_paths(tmp_path):
             container_arguments(safe_launch(), directory, profile)
 
 
+def test_container_arguments_reject_host_owned_socket(tmp_path):
+    directory = tmp_path / "uds"
+    directory.mkdir(mode=0o700)
+    profile = tmp_path / "seccomp.json"
+    profile.write_text("{}")
+    profile.chmod(0o600)
+    with socket.socket(socket.AF_UNIX) as supervisor:
+        supervisor.bind(str(directory / "supervisor.sock"))
+        if directory.stat().st_uid != 65534:
+            with pytest.raises(IsolationUnavailable, match="sandbox identity"):
+                container_arguments(safe_launch(), directory, profile)
+
+
 @pytest.mark.asyncio
 async def test_supervisor_rejects_invalid_budget_before_launch(tmp_path):
     with pytest.raises(IsolationUnavailable, match="timeout"):
@@ -69,6 +93,7 @@ async def test_supervisor_rejects_invalid_budget_before_launch(tmp_path):
 
 @pytest.mark.asyncio
 async def test_supervisor_fails_closed_without_runtime(tmp_path, monkeypatch):
+    monkeypatch.setattr("anvil_server.runner_policy.container_arguments", lambda *args: ("docker", "run", "image"))
     directory = tmp_path / "uds"
     directory.mkdir(mode=0o700)
     profile = tmp_path / "seccomp.json"
@@ -85,6 +110,7 @@ async def test_supervisor_fails_closed_without_runtime(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_supervisor_kills_timed_out_runner(tmp_path, monkeypatch):
+    monkeypatch.setattr("anvil_server.runner_policy.container_arguments", lambda *args: ("docker", "run", "image"))
     directory = tmp_path / "uds"
     directory.mkdir(mode=0o700)
     profile = tmp_path / "seccomp.json"
