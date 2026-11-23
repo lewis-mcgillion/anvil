@@ -70,6 +70,38 @@ test("event pagination rejects a repeated cursor", async ({ page }) => {
   await expect(page.getByRole("alert")).toContainText("repeated an event cursor");
 });
 
+test("event inspector accumulates pages without rendering every row", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  await page.route("**/v1/projects?*", (route) => route.fulfill({ json: { items: [project], next_cursor: null } }));
+  await page.route("**/v1/runs/*/events?*", (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    const start = cursor ? Number(cursor) : 0;
+    return route.fulfill({ json: {
+      items: Array.from({ length: 500 }, (_, offset) => ({
+        schema_version: "1", event_id: `0199b167-0000-7000-8000-${String(start + offset).padStart(12, "0")}`,
+        run_id: runId, stream_id: project.id, sequence: start + offset, type: "llm.token.chunk",
+        occurred_at: "2026-01-01T12:00:00Z", payload: { chunk: start + offset },
+      })), next_cursor: start === 9500 ? null : String(start + 500),
+    } });
+  });
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Run ID").fill(runId);
+  await page.getByRole("button", { name: "Inspect run" }).click();
+  for (let pageIndex = 1; pageIndex < 20; pageIndex++) {
+    await expect(page.getByText(`${pageIndex * 500} events loaded`, { exact: false })).toBeVisible();
+    await page.getByRole("button", { name: "Load more events" }).click();
+  }
+  await expect(page.getByText("10000 events loaded", { exact: false })).toBeVisible();
+  await expect(page.locator(".event-row")).toHaveCount(24);
+  await page.getByLabel("Seek to event").fill("10000");
+  await expect(page.getByText("Event ID:", { exact: false })).toContainText("000000009999");
+});
+
 const first = {
   id: "0199b167-0000-7000-8000-000000000011",
   name: "Alpha",
