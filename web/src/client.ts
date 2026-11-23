@@ -2,6 +2,7 @@ import createClient from "openapi-fetch";
 import type { components, paths } from "./api-types";
 
 export type Project = components["schemas"]["Project"];
+export type Run = components["schemas"]["Run"];
 
 export class ApiError extends Error {
   constructor(
@@ -72,6 +73,23 @@ export async function listProjects(
     new Set(data.items.map((project) => project.id)).size !== data.items.length
   ) {
     throw new Error("The API returned an invalid project page. No project data was accepted.");
+  }
+  return data;
+}
+
+export async function listProjectRuns(client: ReturnType<typeof dashboardClient>,
+                                      signal: AbortSignal, projectId: string, cursor?: string) {
+  const { data } = await client.GET("/runs", {
+    params: { query: { project_id: projectId, limit: 100, ...(cursor ? { cursor } : {}) } },
+    signal,
+  });
+  if (!data || !Array.isArray(data.items) ||
+      !(data.next_cursor === null || (typeof data.next_cursor === "string" && data.next_cursor.length > 0)) ||
+      data.items.some((run) => !run || run.project_id !== projectId || typeof run.id !== "string" ||
+        typeof run.capture_state !== "string" || typeof run.execution_state !== "string" ||
+        typeof run.agent_name !== "string") ||
+      new Set(data.items.map((run) => run.id)).size !== data.items.length) {
+    throw new Error("The API returned an invalid project run page.");
   }
   return data;
 }

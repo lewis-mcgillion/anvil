@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ApiError, dashboardClient, listProjects, type Project } from "./client";
+import { ApiError, dashboardClient, listProjects, listProjectRuns, type Project, type Run } from "./client";
+import { captureQualityLabel } from "./capture-quality";
 import "./style.css";
 
 class ErrorBoundary extends React.Component<React.PropsWithChildren, { failed: boolean }> {
@@ -42,18 +43,45 @@ function Page({ title, children }: React.PropsWithChildren<{ title: string }>) {
   return <><h1 ref={heading} tabIndex={-1}>{title}</h1>{children}</>;
 }
 
-function ProjectOverview({ projects }: { projects: Project[] }) {
+function ProjectOverview({ projects, client }: { projects: Project[]; client: ReturnType<typeof dashboardClient> }) {
   const { projectId } = useParams();
   const project = projects.find((item) => item.id === projectId);
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [cursor, setCursor] = useState<string>();
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string>();
+  const [loadingRuns, setLoadingRuns] = useState(true);
+  useEffect(() => {
+    if (!project) return;
+    const controller = new AbortController();
+    setLoadingRuns(true);
+    setRunError(undefined);
+    listProjectRuns(client, controller.signal, project.id, cursor).then((page) => {
+      if (controller.signal.aborted) return;
+      setRuns((previous) => cursor ? [...previous, ...page.items.filter((run) =>
+        !previous.some((item) => item.id === run.id))] : page.items);
+      setNextCursor(page.next_cursor);
+    }).catch((failure: unknown) => {
+      if (!controller.signal.aborted) setRunError(failure instanceof Error ? failure.message : "Unable to load runs");
+    }).finally(() => { if (!controller.signal.aborted) setLoadingRuns(false); });
+    return () => controller.abort();
+  }, [client, project?.id, cursor]);
   if (!project) {
     return <Page title="Project unavailable"><p>This project is not in the loaded authorized project list. Load additional projects or choose a visible project.</p><Link to="/">Choose a project</Link></Page>;
   }
   return <Page title={project.name}>
     <p>Project ID: <code>{project.id}</code></p>
     <p>Retention: {project.retention_days} days</p>
-    <h2>Investigation capabilities</h2>
-    <p>Run explorer and playback are not available in this dashboard yet. The Python server must implement the published run-list, event-stream and recording-projection contracts first.</p>
-    <p>No capture completeness, execution outcome or replay eligibility is inferred from missing evidence. This page never schedules execution.</p>
+    <h2>Runs</h2>
+    {loadingRuns && <p role="status">Loading runs...</p>}
+    {runError && <p role="alert">{runError}</p>}
+    {!loadingRuns && !runError && runs.length === 0 && <p>No recorded runs in this project.</p>}
+    <ul>{runs.map((run) => <li key={run.id}><strong>{run.agent_name}</strong> <code>{run.id}</code>
+      <span> — {run.capture_state}; {run.execution_state}; {captureQualityLabel({
+        capture_status: run.capture_state, execution_outcome: run.execution_state,
+      })}</span></li>)}</ul>
+    {nextCursor && <button disabled={loadingRuns} onClick={() => setCursor(nextCursor)}>Load more runs</button>}
+    <p>Replay eligibility requires sealed recording evidence; run summaries alone cannot establish it. This page never executes agent code.</p>
   </Page>;
 }
 
@@ -124,7 +152,7 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: (message?: 
         <Route path="/" element={<Page title="Projects">
           {projects.length === 0 ? <p>No projects are visible to this key. Ask an administrator for a project grant.</p> : <ul>{projects.map((project) => <li key={project.id}><Link to={`/projects/${project.id}`}>{project.name}</Link></li>)}</ul>}
         </Page>} />
-        <Route path="/projects/:projectId" element={<ProjectOverview projects={projects} />} />
+        <Route path="/projects/:projectId" element={<ProjectOverview projects={projects} client={client} />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Page title="Page not found"><Link to="/">Return to projects</Link></Page>} />
       </Routes>}
