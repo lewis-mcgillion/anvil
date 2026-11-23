@@ -59,3 +59,38 @@ async def receive_terminal_outcome(reader: asyncio.StreamReader, writer: asyncio
             raise IsolationUnavailable("Runner reported unspecified terminal outcome")
         await write_supervisor_message(writer, SupervisorMessage(finished={}))
         return message.finished.outcome
+
+
+async def supervise_recorded_messages(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
+                                      *, run_id: str, timeout_seconds: float = 60) -> int:
+    if not run_id or timeout_seconds <= 0:
+        raise IsolationUnavailable("Invalid recorded runner supervision configuration")
+    sequences: dict[str, int] = {}
+    async with asyncio.timeout(timeout_seconds):
+        while True:
+            message = await read_runner_message(reader)
+            kind = message.WhichOneof("message")
+            if kind == "heartbeat":
+                await write_supervisor_message(writer, SupervisorMessage(heartbeat=message.heartbeat))
+            elif kind == "emit_events":
+                batch = message.emit_events
+                if batch.run_id != run_id or not batch.stream_id or not batch.events:
+                    raise IsolationUnavailable("Runner event batch has invalid identity")
+                expected = sequences.get(batch.stream_id, 0)
+                for event in batch.events:
+                    if (event.run_id != run_id or event.stream_id != batch.stream_id
+                            or event.sequence != expected):
+                        raise IsolationUnavailable("Runner event sequence or identity mismatch")
+                    expected += 1
+                sequences[batch.stream_id] = expected
+                await write_supervisor_message(writer, SupervisorMessage(event_ack={
+                    "run_id": run_id, "stream_id": batch.stream_id,
+                    "acked_through_sequence": expected - 1,
+                }))
+            elif kind == "finished":
+                if message.finished.outcome == RUN_OUTCOME_UNSPECIFIED:
+                    raise IsolationUnavailable("Runner reported unspecified terminal outcome")
+                await write_supervisor_message(writer, SupervisorMessage(finished={}))
+                return message.finished.outcome
+            else:
+                raise IsolationUnavailable("Runner requested unsupported supervisor action")

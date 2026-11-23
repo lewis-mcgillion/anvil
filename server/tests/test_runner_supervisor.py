@@ -4,7 +4,7 @@ import pytest
 
 from anvil_server.runner_pb2 import RunnerMessage, SupervisorMessage
 from anvil_server.runner_policy import IsolationUnavailable
-from anvil_server.runner_supervisor import handshake, read_runner_message, receive_terminal_outcome
+from anvil_server.runner_supervisor import handshake, read_runner_message, receive_terminal_outcome, supervise_recorded_messages
 
 
 def framed(message):
@@ -80,3 +80,41 @@ async def test_runner_terminal_session_rejects_unsolicited_tool_request():
     reader.feed_eof()
     with pytest.raises(IsolationUnavailable, match="unsupported"):
         await receive_terminal_outcome(reader, None)
+
+
+@pytest.mark.asyncio
+async def test_supervisor_acks_recorded_events_and_terminal_outcome():
+    reader = asyncio.StreamReader()
+    reader.feed_data(framed(RunnerMessage(emit_events={
+        "run_id": "run", "stream_id": "stream", "events": [
+            {"run_id": "run", "stream_id": "stream", "sequence": 0},
+        ],
+    })) + framed(RunnerMessage(finished={"outcome": 1})))
+    reader.feed_eof()
+    outgoing = []
+
+    class Writer:
+        def write(self, data):
+            outgoing.append(data)
+
+        async def drain(self):
+            pass
+
+    assert await supervise_recorded_messages(reader, Writer(), run_id="run") == 1
+    assert outgoing[0] == framed(SupervisorMessage(event_ack={
+        "run_id": "run", "stream_id": "stream", "acked_through_sequence": 0,
+    }))
+    assert outgoing[1] == framed(SupervisorMessage(finished={}))
+
+
+@pytest.mark.asyncio
+async def test_supervisor_rejects_event_sequence_gap():
+    reader = asyncio.StreamReader()
+    reader.feed_data(framed(RunnerMessage(emit_events={
+        "run_id": "run", "stream_id": "stream", "events": [
+            {"run_id": "run", "stream_id": "stream", "sequence": 2},
+        ],
+    })))
+    reader.feed_eof()
+    with pytest.raises(IsolationUnavailable, match="sequence"):
+        await supervise_recorded_messages(reader, None, run_id="run")
