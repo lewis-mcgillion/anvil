@@ -280,6 +280,32 @@ async def test_streaming_chunks_preserve_sequence():
     assert sum(kind == "model.completed" for kind, _, _ in captured) == 1
 
 
+async def test_overlapping_identical_model_calls_fail_with_explicit_ambiguity():
+    from unittest.mock import Mock
+
+    from anvil_adk.plugin import CapturePlugin
+
+    class Context:
+        invocation_id = "same-invocation"
+        branch = "same-branch"
+        agent_name = "same-agent"
+        function_call_id = None
+
+    captured = []
+    plugin = CapturePlugin(lambda *event: captured.append(event))
+    request = Mock(spec=LlmRequest)
+    request.model = "offline"
+    request.model_dump.return_value = {"model": "offline"}
+    context = Context()
+    await plugin.before_model_callback(callback_context=context, llm_request=request)
+    with pytest.raises(Ineligible, match="ambiguous causal identity"):
+        await plugin.before_model_callback(callback_context=context, llm_request=request)
+    assert len(captured) == 1
+    assert len(plugin._models) == 1
+    await plugin.close()
+    assert not plugin._models and not plugin._chunks
+
+
 @pytest.mark.parametrize("bad", [
     object(), b"pickle", (1, 2), {1: "not a string key"}, {"x": float("nan")},
     {"x": float("inf")}, {"x": object()},
