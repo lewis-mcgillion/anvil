@@ -22,6 +22,15 @@ def test_rate_limit_requires_explicit_retry_after():
         BrokerFault("rate_limit")
 
 
+@pytest.mark.parametrize("kind,retry,delay", [
+    ("unknown", 0, 0), ("rate_limit", 601, 0), ("delay", 0, 600_001),
+    ("delay", True, 0), ("delay", 0, 0.5),
+])
+def test_invalid_fault_configuration_fails_before_dispatch(kind, retry, delay):
+    with pytest.raises(ValueError):
+        BrokerFault(kind, retry_after_seconds=retry, delay_ms=delay)
+
+
 @pytest.mark.asyncio
 async def test_fake_provider_is_never_called_for_pre_dispatch_rate_limit():
     calls = []

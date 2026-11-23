@@ -13,8 +13,11 @@ class BrokerFault:
     delay_ms: int = 0
 
     def __post_init__(self):
-        if self.retry_after_seconds < 0 or self.delay_ms < 0:
-            raise ValueError("Fault timing must be nonnegative")
+        if self.kind not in {"rate_limit", "disconnect", "truncated_stream", "delay"}:
+            raise ValueError("Unsupported broker fault")
+        if (type(self.retry_after_seconds) is not int or type(self.delay_ms) is not int
+                or not 0 <= self.retry_after_seconds <= 600 or not 0 <= self.delay_ms <= 600_000):
+            raise ValueError("Fault timing must be bounded nonnegative integers")
         if self.kind == "rate_limit" and self.retry_after_seconds < 1:
             raise ValueError("Rate-limit faults require Retry-After")
 
