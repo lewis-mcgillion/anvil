@@ -66,3 +66,28 @@ async def test_attempt_seals_cancellation():
     evidence = await asyncio.wait_for(task, 1)
     assert evidence["outcome"] == "cancelled"
     assert sealed == [evidence]
+
+
+@pytest.mark.asyncio
+async def test_attempt_cancellation_during_seal_does_not_discard_evidence():
+    import asyncio
+
+    sealing_started = asyncio.Event()
+    release_seal = asyncio.Event()
+    sealed = []
+
+    async def run():
+        return None
+
+    async def seal(evidence):
+        sealing_started.set()
+        await release_seal.wait()
+        sealed.append(evidence)
+
+    task = asyncio.create_task(execute_attempt(sample(), run, seal))
+    await sealing_started.wait()
+    task.cancel()
+    release_seal.set()
+    evidence = await asyncio.wait_for(task, 1)
+    assert evidence["outcome"] == "succeeded"
+    assert sealed == [evidence]

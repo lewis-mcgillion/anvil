@@ -61,5 +61,12 @@ async def execute_attempt(
     evidence = {"provenance": dict(details), "outcome": outcome,
                 "duration_ms": max(0, int((time.monotonic() - started) * 1000)),
                 "failure_code": failure}
-    await asyncio.shield(seal(evidence))
+    sealing = asyncio.create_task(seal(evidence))
+    while not sealing.done():
+        try:
+            await asyncio.shield(sealing)
+        except asyncio.CancelledError:
+            if sealing.done():
+                break
+    await sealing
     return evidence
