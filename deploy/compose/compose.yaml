@@ -47,7 +47,7 @@ services:
         condition: service_healthy
     environment:
       ANVIL_DATABASE_URL: postgresql+asyncpg://anvil:${ANVIL_POSTGRES_PASSWORD:?Set ANVIL_POSTGRES_PASSWORD}@postgres:5432/anvil
-      ANVIL_WORKER_PROJECT_ID: ${ANVIL_WORKER_PROJECT_ID:?Set ANVIL_WORKER_PROJECT_ID for worker profile}
+      ANVIL_WORKER_PROJECT_ID: ${ANVIL_WORKER_PROJECT_ID:-}
     read_only: true
     tmpfs:
       - /tmp
