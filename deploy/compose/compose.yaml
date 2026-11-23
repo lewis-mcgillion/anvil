@@ -36,5 +36,26 @@ services:
       - ALL
     restart: unless-stopped
 
+  worker:
+    profiles: ["worker"]
+    build:
+      context: ../..
+      dockerfile: deploy/containers/api.Dockerfile
+    command: ["python", "-m", "anvil_server.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ANVIL_DATABASE_URL: postgresql+asyncpg://anvil:${ANVIL_POSTGRES_PASSWORD:?Set ANVIL_POSTGRES_PASSWORD}@postgres:5432/anvil
+      ANVIL_WORKER_PROJECT_ID: ${ANVIL_WORKER_PROJECT_ID:?Set ANVIL_WORKER_PROJECT_ID for worker profile}
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
 volumes:
   database:

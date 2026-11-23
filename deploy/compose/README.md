@@ -7,7 +7,9 @@ From `deploy/compose`, run `docker compose up --build`. API access is bound to
 
 This is **not yet** a complete Anvil installation. Run SQL migrations in
 version order before using API persistence. The worker requires an explicitly
-configured project ID, and the sandboxed replay runner/UI/offline demo do not
+configured project ID (`ANVIL_WORKER_PROJECT_ID`) and is opt-in via
+`docker compose --profile worker up --build`. The worker does not perform
+re-execution. The sandboxed replay runner/UI/offline demo do not
 yet exist as supported Compose services. Do not expose this setup to the
 internet or claim recorded re-execution isolation until ANVIL-037/073 are
 completed. Stop with `docker compose down` to retain database volume; use
