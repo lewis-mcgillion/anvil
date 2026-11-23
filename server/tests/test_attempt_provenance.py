@@ -127,6 +127,28 @@ async def test_attempt_rejects_boolean_false_result():
 
 
 @pytest.mark.asyncio
+async def test_attempt_seals_resource_accounting_and_rejects_invalid_counters():
+    sealed = []
+
+    async def valid():
+        return {"resources": {"model_calls": 2, "input_tokens": 150}}
+
+    async def invalid():
+        return {"resources": {"model_calls": -1}}
+
+    async def seal(evidence):
+        sealed.append(evidence)
+
+    result = await execute_attempt(sample(), valid, seal)
+    assert result["resources"] == {"model_calls": 2, "input_tokens": 150}
+    assert verify_evidence(result)
+    failure = await execute_attempt(sample(), invalid, seal)
+    assert failure["outcome"] == "failed"
+    assert failure["failure_code"] == "invalid_resource_accounting"
+    assert all(verify_evidence(item) for item in sealed)
+
+
+@pytest.mark.asyncio
 async def test_attempt_seals_cancellation():
     import asyncio
 

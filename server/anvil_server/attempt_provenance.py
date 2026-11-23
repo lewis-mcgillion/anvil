@@ -129,6 +129,7 @@ async def execute_attempt(
     started = time.monotonic()
     outcome = "failed"
     failure = None
+    resources = None
     try:
         async with asyncio.timeout(wall_seconds):
             result = await execute()
@@ -136,6 +137,17 @@ async def execute_attempt(
             failure = "runner_outcome"
         else:
             outcome = "succeeded"
+            if isinstance(result, Mapping):
+                reported = result.get("resources")
+                if reported is not None:
+                    if not isinstance(reported, Mapping) or not all(
+                        key in {"model_calls", "tool_calls", "input_tokens", "output_tokens", "spend_micro_usd"}
+                        and type(value) is int and value >= 0 for key, value in reported.items()
+                    ):
+                        outcome = "failed"
+                        failure = "invalid_resource_accounting"
+                    else:
+                        resources = dict(reported)
     except asyncio.CancelledError:
         outcome = "cancelled"
     except TimeoutError:
@@ -144,7 +156,7 @@ async def execute_attempt(
         failure = "runner_error"
     evidence = {"provenance": dict(details), "outcome": outcome,
                 "duration_ms": max(0, int((time.monotonic() - started) * 1000)),
-                "failure_code": failure}
+                "failure_code": failure, "resources": resources}
     try:
         canonical = json.dumps(evidence, sort_keys=True, separators=(",", ":"),
                                ensure_ascii=False, allow_nan=False).encode("utf-8")
