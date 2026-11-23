@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .runner_pb2 import RunnerMessage, SupervisorMessage, RUN_OUTCOME_UNSPECIFIED
 from .runner_policy import IsolationUnavailable
-from .runner_policy import RunnerLaunch, supervise_container
+from .runner_policy import RunnerLaunch, supervise_container, verify_local_runner_image
 from .runner_fixtures import RecordedRunnerFixtures
 
 
@@ -148,6 +148,7 @@ async def run_isolated_recorded_session(
     *, adapter: str, config: SupervisorMessage, fixtures: RecordedRunnerFixtures,
     persist_events: Callable[[object], Awaitable[None]], timeout_seconds: float = 60,
 ) -> int:
+    await verify_local_runner_image(launch)
     socket_path = socket_directory / "supervisor.sock"
     if socket_directory.is_symlink() or not socket_directory.is_dir():
         raise IsolationUnavailable("Runner socket directory is invalid")

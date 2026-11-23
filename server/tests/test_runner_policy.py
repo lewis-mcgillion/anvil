@@ -5,7 +5,7 @@ import socket
 
 import pytest
 
-from anvil_server.runner_policy import IsolationUnavailable, RunnerLaunch, container_arguments, supervise_container, verify_runner_image_config
+from anvil_server.runner_policy import IsolationUnavailable, RunnerLaunch, container_arguments, supervise_container, verify_runner_image_config, verify_local_runner_image
 
 
 def safe_launch():
@@ -25,6 +25,33 @@ def test_runner_image_rejects_credentials_ports_and_volumes():
                    {"config": {"Env": [], "User": "root"}}):
         with pytest.raises(IsolationUnavailable):
             verify_runner_image_config(config)
+
+
+@pytest.mark.asyncio
+async def test_local_image_verification_rejects_digest_mismatch(monkeypatch):
+    class Inspected:
+        returncode = 0
+
+        async def communicate(self):
+            return (b'[{"RepoDigests":["anvil/runner@sha256:' + b'b' * 64
+                    + b'"],"Config":{"Env":[],"User":"65534:65534"}}]', b'')
+
+    async def spawn(*args, **kwargs):
+        return Inspected()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    with pytest.raises(IsolationUnavailable, match="digest"):
+        await verify_local_runner_image(safe_launch())
+
+
+@pytest.mark.asyncio
+async def test_local_image_verification_fails_without_runtime(monkeypatch):
+    async def spawn(*args, **kwargs):
+        raise FileNotFoundError("docker")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    with pytest.raises(IsolationUnavailable, match="unavailable"):
+        await verify_local_runner_image(safe_launch())
 
 
 @pytest.mark.parametrize("control", ["network_disabled", "read_only_root", "no_new_privileges",

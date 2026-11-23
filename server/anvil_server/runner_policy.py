@@ -37,6 +37,35 @@ def verify_runner_image_config(config: dict) -> bool:
     return True
 
 
+async def verify_local_runner_image(launch: "RunnerLaunch", *, timeout_seconds: float = 10) -> None:
+    launch.validate()
+    if timeout_seconds <= 0:
+        raise IsolationUnavailable("Runner image verification timeout must be positive")
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "docker", "image", "inspect", launch.image,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+            env={"PATH": os.defpath},
+        )
+        try:
+            output, _ = await asyncio.wait_for(process.communicate(), timeout_seconds)
+        except BaseException:
+            process.kill()
+            await process.wait()
+            raise
+        if process.returncode != 0 or len(output) > 262_144:
+            raise IsolationUnavailable("Runner image inspection failed")
+        images = json.loads(output)
+        if not isinstance(images, list) or len(images) != 1 or not isinstance(images[0], dict):
+            raise IsolationUnavailable("Runner image inspection returned invalid metadata")
+        image = images[0]
+        if launch.image not in image.get("RepoDigests", []):
+            raise IsolationUnavailable("Runner image digest is not verified locally")
+        verify_runner_image_config({"config": image.get("Config")})
+    except (OSError, ValueError, asyncio.TimeoutError) as error:
+        raise IsolationUnavailable("Runner image verification unavailable") from error
+
+
 @dataclass(frozen=True)
 class RunnerLaunch:
     image: str

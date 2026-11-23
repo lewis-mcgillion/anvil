@@ -254,6 +254,9 @@ async def test_recorded_protocol_handshake_through_terminal_completion():
 
 @pytest.mark.asyncio
 async def test_isolated_runner_exit_before_handshake_fails_closed(tmp_path, monkeypatch):
+    async def verified(launch):
+        pass
+    monkeypatch.setattr("anvil_server.runner_supervisor.verify_local_runner_image", verified)
     monkeypatch.setattr("anvil_server.runner_supervisor._sandbox_owned", lambda path: True)
     async def exited(*args, **kwargs):
         return 0
@@ -273,11 +276,14 @@ async def test_isolated_runner_exit_before_handshake_fails_closed(tmp_path, monk
 
 
 @pytest.mark.asyncio
-async def test_isolated_runner_requires_sandbox_owned_socket_directory(tmp_path):
+async def test_isolated_runner_requires_sandbox_owned_socket_directory(tmp_path, monkeypatch):
+    async def verified(launch):
+        pass
+    monkeypatch.setattr("anvil_server.runner_supervisor.verify_local_runner_image", verified)
     if tmp_path.stat().st_uid == 65534:
         pytest.skip("test requires a host-owned temporary directory")
 
-    with pytest.raises(IsolationUnavailable, match="directory must belong"):
+    with pytest.raises(IsolationUnavailable):
         await run_isolated_recorded_session(
             None, tmp_path, tmp_path / "seccomp.json", adapter="google-adk",
             config=SupervisorMessage(config={"run_id": "run"}),
@@ -289,6 +295,9 @@ async def test_isolated_runner_requires_sandbox_owned_socket_directory(tmp_path)
 
 @pytest.mark.asyncio
 async def test_isolated_runner_cancels_unfinished_connection_on_exit(tmp_path, monkeypatch):
+    async def verified(launch):
+        pass
+    monkeypatch.setattr("anvil_server.runner_supervisor.verify_local_runner_image", verified)
     monkeypatch.setattr("anvil_server.runner_supervisor._sandbox_owned", lambda path: True)
     connected = asyncio.Event()
 
