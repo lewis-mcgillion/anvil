@@ -14,6 +14,12 @@ class BrokerDenied(ValueError):
     pass
 
 
+class BrokerThrottled(BrokerDenied):
+    def __init__(self, retry_after_seconds: int | None):
+        super().__init__("Model provider is throttling requests")
+        self.retry_after_seconds = retry_after_seconds
+
+
 @dataclass(frozen=True)
 class LiveBudget:
     wall_seconds: int = 120
@@ -111,6 +117,12 @@ async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, a
             writer.write(headers.encode("ascii") + body)
             await asyncio.wait_for(writer.drain(), timeout=10)
             head = await reader.readuntil(b"\r\n\r\n")
+            if len(head) <= 8192 and head.startswith((b"HTTP/1.1 429 ", b"HTTP/1.0 429 ")):
+                throttle_headers = head.decode("ascii").lower().split("\r\n")
+                retry_values = [line.split(":", 1)[1].strip() for line in throttle_headers[1:]
+                                if line.startswith("retry-after:")]
+                retry_value = retry_values[0] if len(retry_values) == 1 else ""
+                raise BrokerThrottled(min(int(retry_value), 600) if retry_value.isdigit() else None)
             if len(head) > 8192 or not head.startswith((b"HTTP/1.1 200 ", b"HTTP/1.0 200 ")):
                 raise BrokerDenied("Model provider rejected request or attempted redirect")
             headers = head.decode("ascii").lower().split("\r\n")

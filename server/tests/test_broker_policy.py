@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from anvil_server.broker_policy import BrokerDenied, BudgetLedger, LiveBudget, admit_live_model, resolve_public_endpoint, dispatch_live_model
+from anvil_server.broker_policy import BrokerDenied, BrokerThrottled, BudgetLedger, LiveBudget, admit_live_model, resolve_public_endpoint, dispatch_live_model
 
 
 def permitted(**changes):
@@ -200,6 +200,42 @@ async def test_live_broker_rejects_ambiguous_response_framing(monkeypatch, extra
     with pytest.raises(BrokerDenied, match="encoding|content length"):
         await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
                                   credential="operator-secret", payload={}, ledger=BudgetLedger(LiveBudget()))
+
+
+@pytest.mark.asyncio
+async def test_live_broker_exposes_bounded_retry_after_without_retry(monkeypatch):
+    import asyncio
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint", lambda endpoint: asyncio.sleep(0, result=("8.8.8.8",)))
+    calls = []
+
+    class Writer:
+        def write(self, data):
+            pass
+
+        async def drain(self):
+            pass
+
+        def close(self):
+            pass
+
+        async def wait_closed(self):
+            pass
+
+    async def connect(*args, **kwargs):
+        calls.append(1)
+        reader = asyncio.StreamReader()
+        reader.feed_data(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 120\r\nContent-Length: 0\r\n\r\n")
+        reader.feed_eof()
+        return reader, Writer()
+
+    monkeypatch.setattr(asyncio, "open_connection", connect)
+    endpoint = "https://models.example.com/v1/responses"
+    with pytest.raises(BrokerThrottled) as error:
+        await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+                                  credential="operator-secret", payload={}, ledger=BudgetLedger(LiveBudget()))
+    assert error.value.retry_after_seconds == 120
+    assert calls == [1]
 
 
 @pytest.mark.asyncio
