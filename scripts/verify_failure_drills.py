@@ -24,6 +24,10 @@ def verify_drills(records: list[dict]) -> None:
                 or record["orphan_runners"] != 0 or type(record.get("peak_memory_bytes")) is not int
                 or record["peak_memory_bytes"] <= 0):
             raise ValueError("Resilience drill lacks passing, bounded evidence")
+        evidence_path = Path(record["evidence_path"])
+        if (evidence_path.is_absolute() or any(part in (".", "..") for part in record["evidence_path"].split("/"))
+                or "\\" in record["evidence_path"] or not evidence_path.suffix == ".json"):
+            raise ValueError("Resilience drill evidence path is unsafe")
 
 
 if __name__ == "__main__":

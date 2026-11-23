@@ -18,7 +18,10 @@ class FailureDrillTests(unittest.TestCase):
                          lambda values: values[0].update(passed=False),
                          lambda values: values[0].update(orphan_runners=1),
                          lambda values: values[0].update(peak_memory_bytes=0),
-                         lambda values: values[0].update(evidence_path="")):
+                         lambda values: values[0].update(evidence_path=""),
+                         lambda values: values[0].update(evidence_path="../secrets.json"),
+                         lambda values: values[0].update(evidence_path="/etc/passwd.json"),
+                         lambda values: values[0].update(evidence_path="logs\\file.json")):
             values = records()
             mutation(values)
             with self.assertRaises(ValueError):
