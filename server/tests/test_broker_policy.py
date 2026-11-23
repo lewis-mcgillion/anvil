@@ -514,3 +514,34 @@ async def test_live_broker_redacts_transport_exception_details(monkeypatch):
                                   ledger=BudgetLedger(LiveBudget()))
     assert "secret-token" not in str(caught.value)
     assert caught.value.__suppress_context__
+
+
+@pytest.mark.asyncio
+async def test_live_broker_close_error_does_not_mask_provider_rejection(monkeypatch):
+    import asyncio
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint",
+                        lambda endpoint: asyncio.sleep(0, result=("8.8.8.8",)))
+
+    class Writer:
+        def write(self, data):
+            pass
+
+        async def drain(self):
+            pass
+
+        def close(self):
+            raise OSError("secret-close-error")
+
+    async def connect(*args, **kwargs):
+        reader = asyncio.StreamReader()
+        reader.feed_data(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+        reader.feed_eof()
+        return reader, Writer()
+
+    monkeypatch.setattr(asyncio, "open_connection", connect)
+    endpoint = "https://models.example.com/v1/responses"
+    with pytest.raises(BrokerDenied, match="rejected request") as caught:
+        await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+                                  credential="operator-secret", payload={}, ledger=BudgetLedger(LiveBudget()))
+    assert "secret-close-error" not in str(caught.value)

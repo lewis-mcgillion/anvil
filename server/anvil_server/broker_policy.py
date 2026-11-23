@@ -243,8 +243,11 @@ async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, a
         raise BrokerDenied("Model provider transport failed") from None
     finally:
         if writer is not None:
-            writer.close()
-            await writer.wait_closed()
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except (OSError, ssl.SSLError):
+                pass
 
 
 def admit_live_model(*, mode: str, approved: bool, profile_endpoint: str,
