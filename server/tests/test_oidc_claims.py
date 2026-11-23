@@ -35,7 +35,10 @@ def test_cross_project_expired_or_untrusted_claim_denied(change):
 @pytest.mark.parametrize("issuer", ["http://identity.example.com", "https://",
                                     "https://user@identity.example.com",
                                     "https://identity.example.com?token=secret",
-                                    "https://identity.example.com#fragment"])
+                                    "https://identity.example.com#fragment",
+                                    "https://identity.example.com:invalid",
+                                    "https://identity.example.com:0",
+                                    "https://[broken-ipv6"])
 def test_invalid_issuer_configuration_denied(issuer):
     with pytest.raises(IdentityDenied):
         validate_project_claims(claims() | {"iss": issuer}, issuer=issuer,
@@ -49,6 +52,11 @@ def test_multiple_audiences_require_matching_authorized_party():
     with pytest.raises(IdentityDenied):
         check(multiple | {"azp": "other-service"})
     assert check(multiple | {"azp": "anvil-api"}) == "user-1"
+
+
+def test_duplicate_audiences_rejected():
+    with pytest.raises(IdentityDenied):
+        check(claims() | {"aud": ["anvil-api", "anvil-api"], "azp": "anvil-api"})
 
 
 def test_single_audience_rejects_conflicting_authorized_party():
