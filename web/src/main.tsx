@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiError, dashboardClient, listProjects, listRunEvents, type CaptureEvent, type Project } from "./client";
 import { timelineWindow } from "./timeline-window";
+import { timelineBranches } from "./timeline-branches";
 import "./style.css";
 
 class ErrorBoundary extends React.Component<React.PropsWithChildren, { failed: boolean }> {
@@ -56,6 +57,7 @@ function EventInspector({ client, projectId, runId }: { client: ReturnType<typeo
   const viewport = useRef<HTMLDivElement>(null);
   const rowHeight = 56;
   const streams = [...new Set(events.map((event) => event.stream_id))];
+  const branches = timelineBranches(events);
   const filtered = streamFilter ? events.filter((event) => event.stream_id === streamFilter) : events;
   const windowed = timelineWindow(filtered.length, scrollTop, rowHeight, 420);
   const seekTo = (eventId: string) => {
@@ -89,6 +91,13 @@ function EventInspector({ client, projectId, runId }: { client: ReturnType<typeo
   const active = events.find((event) => event.event_id === selected);
   return <section aria-label="Read-only event inspector">
     <p>Events are read-only. Playback and seeking never execute agents, models or tools.</p>
+    <h3>Observed causal branches</h3>
+    <ul>{branches.map((branch) => <li key={branch.streamId}>
+      <button onClick={() => { setStreamFilter(branch.streamId); setScrollTop(0); viewport.current?.scrollTo({ top: 0 }); }}>
+        Stream {branch.streamId}
+      </button>: {branch.events} loaded events; upstream streams: {branch.parentStreams.join(", ") || "none observed"};
+      {branch.missingParents ? ` ${branch.missingParents} parent references unavailable in loaded pages` : " all referenced parents loaded"}
+    </li>)}</ul>
     <label>Stream <select value={streamFilter} onChange={(event) => {
       setStreamFilter(event.target.value); setScrollTop(0); viewport.current?.scrollTo({ top: 0 });
     }}><option value="">All streams</option>{streams.map((stream) =>

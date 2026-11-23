@@ -90,6 +90,34 @@ test("event pagination rejects a repeated cursor", async ({ page }) => {
   await expect(page.getByRole("alert")).toContainText("repeated an event cursor");
 });
 
+test("timeline shows observed causal branches and missing parents", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  const streamB = "0199b167-0000-7000-8000-000000000032";
+  const firstEvent = "0199b167-0000-7000-8000-000000000041";
+  await page.route("**/v1/projects?*", (route) => route.fulfill({ json: { items: [project], next_cursor: null } }));
+  await page.route("**/v1/runs/*/events?*", (route) => route.fulfill({ json: {
+    items: [
+      { schema_version: "1", event_id: firstEvent, run_id: runId, stream_id: project.id,
+        sequence: 0, type: "run.started", occurred_at: "2026-01-01T12:00:00Z", payload: {} },
+      { schema_version: "1", event_id: "0199b167-0000-7000-8000-000000000042", run_id: runId,
+        stream_id: streamB, sequence: 0, type: "model.chunk", occurred_at: "2026-01-01T12:00:01Z",
+        parent_event_ids: [firstEvent, "0199b167-0000-7000-8000-000000000099"], payload: {} },
+    ], next_cursor: null,
+  } }));
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Run ID").fill(runId);
+  await page.getByRole("button", { name: "Inspect run" }).click();
+  await expect(page.getByRole("listitem").filter({ has: page.getByRole("button", { name: `Stream ${streamB}` }) }))
+    .toContainText("1 parent references unavailable");
+  await page.getByRole("button", { name: `Stream ${streamB}`, exact: true }).click();
+  await expect(page.locator(".event-row")).toHaveCount(1);
+});
+
 test("event inspector accumulates pages without rendering every row", async ({ page }) => {
   const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
     retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
