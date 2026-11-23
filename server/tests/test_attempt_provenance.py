@@ -251,3 +251,19 @@ async def test_leased_attempt_seals_before_completing_job():
     result = await run_leased_attempt(Queue(), identifier, identifier, identifier, sample(), run, seal)
     assert result["outcome"] == "succeeded"
     assert events == ["acquire", "run", "seal", ("complete", "succeeded")]
+
+
+@pytest.mark.asyncio
+async def test_unavailable_lease_never_runs_candidate():
+    from uuid import UUID
+
+    class Queue:
+        async def acquire_job(self, *args):
+            return None
+
+    async def forbidden():
+        raise AssertionError("Runner must not execute without a lease")
+
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    assert await run_leased_attempt(Queue(), identifier, identifier, identifier,
+                                    sample(), forbidden, forbidden) is None
