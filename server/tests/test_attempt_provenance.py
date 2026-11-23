@@ -453,6 +453,42 @@ async def test_lease_loss_during_completion_cancels_terminal_update(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_caller_cancellation_during_completion_reclaims_update():
+    import asyncio
+    from uuid import UUID
+
+    completing = asyncio.Event()
+    released = asyncio.Event()
+
+    class Queue:
+        async def acquire_job(self, *args):
+            return {"id": args[1]}
+
+        async def complete(self, *args):
+            completing.set()
+            try:
+                await asyncio.Future()
+            finally:
+                released.set()
+
+    async def run():
+        return None
+
+    async def seal(evidence):
+        pass
+
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    task = asyncio.create_task(run_leased_attempt(
+        Queue(), identifier, identifier, identifier, sample(), run, seal,
+    ))
+    await completing.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 1)
+    assert released.is_set()
+
+
+@pytest.mark.asyncio
 async def test_unavailable_lease_never_runs_candidate():
     from uuid import UUID
 

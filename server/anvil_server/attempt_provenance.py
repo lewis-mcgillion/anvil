@@ -180,6 +180,8 @@ async def run_leased_attempt(
             await queue.heartbeat(project_id, job_id, lease_token)
 
     heartbeat_task = asyncio.create_task(renew_lease()) if callable(getattr(queue, "heartbeat", None)) else None
+    attempt_task = None
+    completion_task = None
     try:
         attempt_task = asyncio.create_task(execute_attempt(details, execute, seal))
         if heartbeat_task is not None:
@@ -203,9 +205,10 @@ async def run_leased_attempt(
                 raise InvalidAttempt("Candidate lease renewal stopped during completion")
         await completion_task
     finally:
-        if not attempt_task.done():
-            attempt_task.cancel()
-            await asyncio.gather(attempt_task, return_exceptions=True)
+        for task in (attempt_task, completion_task):
+            if task is not None and not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
         if heartbeat_task is not None:
             heartbeat_task.cancel()
             await asyncio.gather(heartbeat_task, return_exceptions=True)
