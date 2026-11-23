@@ -52,6 +52,7 @@ function EventInspector({ client, projectId, runId }: { client: ReturnType<typeo
   const [scrollTop, setScrollTop] = useState(0);
   const [selected, setSelected] = useState<string>();
   const [streamFilter, setStreamFilter] = useState("");
+  const seenCursors = useRef(new Set<string>());
   const viewport = useRef<HTMLDivElement>(null);
   const rowHeight = 56;
   const streams = [...new Set(events.map((event) => event.stream_id))];
@@ -70,6 +71,13 @@ function EventInspector({ client, projectId, runId }: { client: ReturnType<typeo
     setError(undefined);
     listRunEvents(client, controller.signal, projectId, runId, cursor).then((page) => {
       if (controller.signal.aborted) return;
+      if (page.next_cursor && (page.next_cursor === cursor || seenCursors.current.has(page.next_cursor))) {
+        throw new Error("The API repeated an event cursor; pagination stopped.");
+      }
+      if (cursor && page.items.some((event) => events.some((item) => item.event_id === event.event_id))) {
+        throw new Error("The API repeated an event across pages; pagination stopped.");
+      }
+      if (cursor) seenCursors.current.add(cursor);
       setEvents((previous) => cursor ? [...previous, ...page.items.filter((event) =>
         !previous.some((item) => item.event_id === event.event_id))] : page.items);
       setNextCursor(page.next_cursor);
