@@ -2,6 +2,36 @@ import createClient from "openapi-fetch";
 import type { components, paths } from "./api-types";
 
 export type Project = components["schemas"]["Project"];
+export type Comparison = components["schemas"]["Comparison"];
+export type Divergence = components["schemas"]["Divergence"];
+
+export async function readComparison(client: ReturnType<typeof dashboardClient>, signal: AbortSignal,
+                                     projectId: string, comparisonId: string) {
+  const { data } = await client.GET("/comparisons/{comparison_id}", {
+    params: { path: { comparison_id: comparisonId }, query: { project_id: projectId } }, signal,
+  });
+  if (!data || data.id !== comparisonId || typeof data.deterministic !== "string" ||
+      typeof data.judge !== "string" || typeof data.infrastructure !== "string") {
+    throw new Error("Invalid comparison summary; no result was accepted.");
+  }
+  return data;
+}
+
+export async function readDivergences(client: ReturnType<typeof dashboardClient>, signal: AbortSignal,
+                                      projectId: string, comparisonId: string, cursor?: string) {
+  const { data } = await client.GET("/comparisons/{comparison_id}/divergences", {
+    params: { path: { comparison_id: comparisonId }, query: {
+      project_id: projectId, limit: 100, ...(cursor ? { cursor } : {}),
+    } }, signal,
+  });
+  if (!data || !Array.isArray(data.items) ||
+      !(data.next_cursor === null || (typeof data.next_cursor === "string" && data.next_cursor.length > 0)) ||
+      data.items.some((item) => !item.id || typeof item.summary !== "string" ||
+        typeof item.category !== "string" || !Array.isArray(item.evidence_event_ids))) {
+    throw new Error("Invalid divergence page; no findings were accepted.");
+  }
+  return data;
+}
 
 export class ApiError extends Error {
   constructor(

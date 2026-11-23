@@ -682,6 +682,11 @@ paths:
         - bearerAuth: [runs:read]
       parameters:
         - $ref: '#/components/parameters/ComparisonId'
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Uuid'
       responses:
         '200':
           description: Comparison report summary.
@@ -703,6 +708,11 @@ paths:
         - bearerAuth: [runs:read]
       parameters:
         - $ref: '#/components/parameters/ComparisonId'
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Uuid'
         - name: category
           in: query
           schema:

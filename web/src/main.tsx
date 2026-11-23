@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ApiError, dashboardClient, listProjects, type Project } from "./client";
+import { ApiError, dashboardClient, listProjects, readComparison, readDivergences,
+  type Comparison, type Divergence, type Project } from "./client";
 import "./style.css";
 
 class ErrorBoundary extends React.Component<React.PropsWithChildren, { failed: boolean }> {
@@ -42,9 +43,57 @@ function Page({ title, children }: React.PropsWithChildren<{ title: string }>) {
   return <><h1 ref={heading} tabIndex={-1}>{title}</h1>{children}</>;
 }
 
-function ProjectOverview({ projects }: { projects: Project[] }) {
+function ComparisonInspector({ client, projectId, comparisonId }: {
+  client: ReturnType<typeof dashboardClient>; projectId: string; comparisonId: string;
+}) {
+  const [comparison, setComparison] = useState<Comparison>();
+  const [findings, setFindings] = useState<Divergence[]>([]);
+  const [cursor, setCursor] = useState<string>();
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [error, setError] = useState<string>();
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(undefined);
+    Promise.all([
+      cursor ? Promise.resolve(comparison) : readComparison(client, controller.signal, projectId, comparisonId),
+      readDivergences(client, controller.signal, projectId, comparisonId, cursor),
+    ]).then(([summary, page]) => {
+      if (controller.signal.aborted) return;
+      if (summary) setComparison(summary);
+      setFindings((previous) => cursor ? [...previous, ...page.items] : page.items);
+      setNextCursor(page.next_cursor);
+    }).catch((failure: unknown) => {
+      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Comparison unavailable");
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [client, projectId, comparisonId, cursor]);
+  return <section aria-label="Read-only comparison inspector">
+    {loading && <p role="status">Loading comparison...</p>}
+    {error && <p role="alert">{error}</p>}
+    {comparison && <><h3>Independent results</h3>
+      <p>Deterministic: {comparison.deterministic}</p>
+      <p>Judge: {comparison.judge}</p>
+      <p>Infrastructure: {comparison.infrastructure}</p>
+      <p>Alignment confidence: {comparison.alignment_confidence}</p></>}
+    <h3>Divergences</h3>
+    {findings.length === 0 && !loading && !error && <p>No findings returned; absence alone is not a pass.</p>}
+    <ul>{findings.map((finding) => <li key={finding.id}>
+      <strong>{finding.category}</strong>: {finding.summary}
+      <p>Evidence events: {finding.evidence_event_ids.join(", ") || "Missing"}</p>
+      <p>Argument-level evidence requires loading the referenced capture events; it is not inferred from this summary.</p>
+    </li>)}</ul>
+    {nextCursor && <button disabled={loading} onClick={() => setCursor(nextCursor)}>Load more findings</button>}
+    <p>This inspector never schedules replay or executes production tools.</p>
+  </section>;
+}
+
+function ProjectOverview({ projects, client }: { projects: Project[]; client: ReturnType<typeof dashboardClient> }) {
   const { projectId } = useParams();
   const project = projects.find((item) => item.id === projectId);
+  const [comparisonId, setComparisonId] = useState("");
+  const [selected, setSelected] = useState("");
   if (!project) {
     return <Page title="Project unavailable"><p>This project is not in the loaded authorized project list. Load additional projects or choose a visible project.</p><Link to="/">Choose a project</Link></Page>;
   }
@@ -52,6 +101,13 @@ function ProjectOverview({ projects }: { projects: Project[] }) {
     <p>Project ID: <code>{project.id}</code></p>
     <p>Retention: {project.retention_days} days</p>
     <h2>Investigation capabilities</h2>
+    <h3>Comparison evidence</h3>
+    <form onSubmit={(event) => { event.preventDefault(); setSelected(comparisonId); }}>
+      <label>Comparison ID <input required pattern="[0-9a-fA-F-]{36}" value={comparisonId}
+        onChange={(event) => setComparisonId(event.target.value)} /></label>
+      <button type="submit">Inspect comparison</button>
+    </form>
+    {selected && <ComparisonInspector key={selected} client={client} projectId={project.id} comparisonId={selected} />}
     <p>Run explorer and playback are not available in this dashboard yet. The Python server must implement the published run-list, event-stream and recording-projection contracts first.</p>
     <p>No capture completeness, execution outcome or replay eligibility is inferred from missing evidence. This page never schedules execution.</p>
   </Page>;
@@ -124,7 +180,7 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: (message?: 
         <Route path="/" element={<Page title="Projects">
           {projects.length === 0 ? <p>No projects are visible to this key. Ask an administrator for a project grant.</p> : <ul>{projects.map((project) => <li key={project.id}><Link to={`/projects/${project.id}`}>{project.name}</Link></li>)}</ul>}
         </Page>} />
-        <Route path="/projects/:projectId" element={<ProjectOverview projects={projects} />} />
+        <Route path="/projects/:projectId" element={<ProjectOverview projects={projects} client={client} />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Page title="Page not found"><Link to="/">Return to projects</Link></Page>} />
       </Routes>}

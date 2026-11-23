@@ -1,5 +1,9 @@
 # Compatibility policy
 
+The comparison summary and divergence-list GET endpoints require a `project_id`
+query parameter for project-scoped authorization. The contract now documents
+this existing runtime requirement. Missing scope is rejected, not inferred.
+
 Anvil's public contracts are:
 
 - the REST API (`api/openapi.yaml`, base path `/v1`),
