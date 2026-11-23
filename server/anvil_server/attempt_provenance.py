@@ -193,7 +193,15 @@ async def run_leased_attempt(
         terminal_status = "succeeded" if evidence["outcome"] == "succeeded" else (
             "cancelled" if evidence["outcome"] == "cancelled" else "failed"
         )
-        await queue.complete(project_id, job_id, lease_token, terminal_status)
+        completion_task = asyncio.create_task(queue.complete(project_id, job_id, lease_token, terminal_status))
+        if heartbeat_task is not None:
+            done, _ = await asyncio.wait({completion_task, heartbeat_task}, return_when=asyncio.FIRST_COMPLETED)
+            if heartbeat_task in done:
+                completion_task.cancel()
+                await asyncio.gather(completion_task, return_exceptions=True)
+                await heartbeat_task
+                raise InvalidAttempt("Candidate lease renewal stopped during completion")
+        await completion_task
     finally:
         if not attempt_task.done():
             attempt_task.cancel()
