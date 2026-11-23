@@ -212,12 +212,15 @@ async def list_project_runs(request: Request, project_id: UUID, limit: int = 100
         return failure(request, 400, "invalid_request")
     async with project_connection(engine, project_id) as connection:
         rows = (await connection.execute(text("""
-            SELECT id, project_id, capture_status, execution_outcome, agent_name,
-                   adapter, adapter_version, trace_id, started_at, finished_at, created_at
-            FROM runs WHERE project_id = :project AND (CAST(:after AS uuid) IS NULL OR id < CAST(:after AS uuid))
+            SELECT runs.id, runs.project_id, capture_status, execution_outcome, agent_name,
+                   adapter, adapter_version, trace_id, started_at, finished_at, runs.created_at,
+                   (SELECT recordings.id FROM recordings
+                    WHERE recordings.project_id = runs.project_id AND recordings.run_id = runs.id
+                    ORDER BY recordings.created_at DESC, recordings.id DESC LIMIT 1) AS recording_id
+            FROM runs WHERE runs.project_id = :project AND (CAST(:after AS uuid) IS NULL OR runs.id < CAST(:after AS uuid))
               AND (CAST(:execution AS text) IS NULL OR execution_outcome = :execution)
               AND (CAST(:capture AS text) IS NULL OR capture_status = :capture)
-            ORDER BY id DESC LIMIT :limit
+            ORDER BY runs.id DESC LIMIT :limit
         """), {"project": project_id, "after": str(after) if after else None,
                "execution": execution_state, "capture": capture_state, "limit": limit + 1})).mappings().all()
     items = [{"id": str(row["id"]), "project_id": str(row["project_id"]),
@@ -225,7 +228,8 @@ async def list_project_runs(request: Request, project_id: UUID, limit: int = 100
               "agent_name": row["agent_name"], "adapter": row["adapter"],
               "adapter_version": row["adapter_version"], "trace_id": row["trace_id"],
               "started_at": (row["started_at"] or row["created_at"]).isoformat(),
-              "ended_at": row["finished_at"].isoformat() if row["finished_at"] else None}
+              "ended_at": row["finished_at"].isoformat() if row["finished_at"] else None,
+              "recording_id": str(row["recording_id"]) if row["recording_id"] else None}
              for row in rows[:limit]]
     next_cursor = codec.encode("runs", str(project_id), str(rows[limit - 1]["id"]), filters) if len(rows) > limit else None
     return {"items": items, "next_cursor": next_cursor}

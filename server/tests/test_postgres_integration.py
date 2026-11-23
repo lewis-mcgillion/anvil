@@ -528,6 +528,7 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         runs = await client.get("/v1/runs", params={"project_id": str(PROJECT), "limit": 1}, headers=headers)
         assert runs.status_code == 200, runs.text
+        assert runs.json()["items"][0]["recording_id"] == sealed["recording_id"]
         projects = await client.get("/v1/projects", params={"project_id": str(PROJECT)}, headers=headers)
         assert projects.status_code == 200, projects.text
         assert len(projects.json()["items"]) == 1

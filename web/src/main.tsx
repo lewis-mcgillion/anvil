@@ -108,7 +108,8 @@ function ProjectOverview({ projects, client, token }: { projects: Project[]; cli
     <ul>{visibleRuns.map((run) => <li key={run.id}><strong>{run.agent_name}</strong> <code>{run.id}</code>
       <span> — {run.capture_state}; {run.execution_state}; {captureQualityLabel({
         capture_status: run.capture_state, execution_outcome: run.execution_state,
-      })}</span> <button onClick={() => setWatchedRun(watchedRun === run.id ? undefined : run.id)}>
+      })}</span> {run.recording_id && <span>Recording: <code>{run.recording_id}</code> (eligibility unverified)</span>}
+      <button onClick={() => setWatchedRun(watchedRun === run.id ? undefined : run.id)}>
         {watchedRun === run.id ? "Stop live updates" : `Watch ${run.agent_name}`}
       </button></li>)}</ul>
     {nextCursor && <button disabled={loadingRuns} onClick={() => setCursor(nextCursor)}>Load more runs</button>}

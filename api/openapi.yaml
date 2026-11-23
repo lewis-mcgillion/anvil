@@ -1345,6 +1345,11 @@ components:
       required: [id, project_id, capture_state, execution_state, agent_name, adapter, adapter_version, started_at]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
+        recording_id:
+          description: Latest sealed recording associated with this run, when available; does not establish replay eligibility.
+          allOf:
+            - $ref: '#/components/schemas/Uuid'
+          nullable: true
         project_id: { $ref: '#/components/schemas/Uuid' }
         capture_state:
           $ref: '#/components/schemas/CaptureState'
