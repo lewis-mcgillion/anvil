@@ -905,6 +905,11 @@ paths:
         - bearerAuth: [admin]
       parameters:
         - $ref: '#/components/parameters/DeletionId'
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Uuid'
       responses:
         '200':
           description: Deletion request state.

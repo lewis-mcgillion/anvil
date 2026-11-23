@@ -1,5 +1,9 @@
 # Compatibility policy
 
+`GET /deletions/{deletion_id}` requires a `project_id` query parameter for
+project-scoped admin authorization. This documents the existing runtime rule;
+unscoped status reads are rejected rather than inferred.
+
 Anvil's public contracts are:
 
 - the REST API (`api/openapi.yaml`, base path `/v1`),
