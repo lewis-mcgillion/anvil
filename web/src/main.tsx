@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ApiError, dashboardClient, listProjects, listProjectRuns, watchRunEvents, type Project, type Run } from "./client";
+import { ApiError, dashboardClient, listProjects, listProjectRuns, readRecording, watchRunEvents, type Project, type Run } from "./client";
 import { captureQualityLabel } from "./capture-quality";
 import "./style.css";
 
@@ -55,6 +55,21 @@ function ProjectOverview({ projects, client, token }: { projects: Project[]; cli
   const [captureFilter, setCaptureFilter] = useState("all");
   const [watchedRun, setWatchedRun] = useState<string>();
   const [watchError, setWatchError] = useState<string>();
+  const [verifiedRecording, setVerifiedRecording] = useState<string>();
+  const [recordingEligibility, setRecordingEligibility] = useState<string>();
+  const [recordingError, setRecordingError] = useState<string>();
+  useEffect(() => {
+    if (!project || !verifiedRecording) return;
+    const controller = new AbortController();
+    setRecordingEligibility(undefined);
+    setRecordingError(undefined);
+    readRecording(client, controller.signal, project.id, verifiedRecording).then((recording) => {
+      if (!controller.signal.aborted) setRecordingEligibility(recording.replay_eligibility);
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setRecordingError(error instanceof Error ? error.message : "Recording unavailable");
+    });
+    return () => controller.abort();
+  }, [client, project?.id, verifiedRecording]);
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     if (!project || !watchedRun) return;
@@ -108,7 +123,12 @@ function ProjectOverview({ projects, client, token }: { projects: Project[]; cli
     <ul>{visibleRuns.map((run) => <li key={run.id}><strong>{run.agent_name}</strong> <code>{run.id}</code>
       <span> — {run.capture_state}; {run.execution_state}; {captureQualityLabel({
         capture_status: run.capture_state, execution_outcome: run.execution_state,
-      })}</span> {run.recording_id && <span>Recording: <code>{run.recording_id}</code> (eligibility unverified)</span>}
+      })}</span> {run.recording_id && <span>Recording: <code>{run.recording_id}</code>
+        <button onClick={() => setVerifiedRecording(run.recording_id ?? undefined)}>Check recording eligibility</button>
+        {verifiedRecording === run.recording_id && recordingEligibility &&
+          <span> Manifest replay eligibility: {recordingEligibility}</span>}
+        {verifiedRecording === run.recording_id && recordingError && <span role="alert">{recordingError}</span>}
+      </span>}
       <button onClick={() => setWatchedRun(watchedRun === run.id ? undefined : run.id)}>
         {watchedRun === run.id ? "Stop live updates" : `Watch ${run.agent_name}`}
       </button></li>)}</ul>

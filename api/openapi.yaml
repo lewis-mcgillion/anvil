@@ -408,6 +408,11 @@ paths:
         - bearerAuth: [runs:read]
       parameters:
         - $ref: '#/components/parameters/RecordingId'
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Uuid'
       responses:
         '200':
           description: Recording manifest.

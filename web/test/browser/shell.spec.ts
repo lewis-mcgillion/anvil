@@ -39,13 +39,35 @@ test("project runs filter by agent identity and capture state", async ({ page })
   await expect(page.getByText("Inventory", { exact: true })).toBeVisible();
   await expect(page.getByText("Billing", { exact: true })).toBeVisible();
   await expect(page.getByRole("note")).toContainText("Replay eligibility is not verified");
-  await expect(page.getByText("Recording:", { exact: false })).toContainText("eligibility unverified");
+  await expect(page.getByRole("button", { name: "Check recording eligibility" })).toBeVisible();
   await page.getByLabel("Filter runs by agent or ID").fill("inventory");
   await expect(page.getByText("Billing", { exact: true })).toHaveCount(0);
   await page.getByLabel("Filter runs by agent or ID").fill("");
   await page.getByLabel("Capture status").selectOption("open");
   await expect(page.getByText("Inventory", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Billing", { exact: true })).toBeVisible();
+});
+
+test("recording eligibility is obtained only from a scoped manifest lookup", async ({ page }) => {
+  await projects(page, [first]);
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  const recordingId = "0199b167-0000-7000-8000-000000000031";
+  await page.route("**/v1/runs?*", (route) => route.fulfill({ json: {
+    items: [{ id: runId, project_id: first.id, agent_name: "Inventory",
+      capture_state: "sealed_complete", execution_state: "succeeded", recording_id: recordingId }], next_cursor: null,
+  } }));
+  await page.route(`**/v1/recordings/${recordingId}*`, (route) => {
+    expect(new URL(route.request().url()).searchParams.get("project_id")).toBe(first.id);
+    return route.fulfill({ json: { id: recordingId, project_id: first.id,
+      replay_eligibility: "ineligible", manifest_hash: "sha256:" + "a".repeat(64),
+      capture_state: "sealed_complete", event_count: 2, sealed_at: "2026-01-01T12:00:00Z" } });
+  });
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await expect(page.getByText("Manifest replay eligibility:")).toHaveCount(0);
+  await page.getByRole("button", { name: "Check recording eligibility" }).click();
+  await expect(page.getByText("Manifest replay eligibility: ineligible")).toBeVisible();
 });
 
 test("watching a run refreshes its capture status without executing it", async ({ page }) => {

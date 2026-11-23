@@ -3,6 +3,20 @@ import type { components, paths } from "./api-types";
 
 export type Project = components["schemas"]["Project"];
 export type Run = components["schemas"]["Run"];
+export type Recording = components["schemas"]["Recording"];
+
+export async function readRecording(client: ReturnType<typeof dashboardClient>, signal: AbortSignal,
+                                    projectId: string, recordingId: string): Promise<Recording> {
+  const { data } = await client.GET("/recordings/{recording_id}", {
+    params: { path: { recording_id: recordingId }, query: { project_id: projectId } }, signal,
+  });
+  if (!data || data.id !== recordingId || data.project_id !== projectId ||
+      !["eligible", "ineligible"].includes(data.replay_eligibility ?? "") ||
+      !data.manifest_hash?.startsWith("sha256:")) {
+    throw new Error("The API returned invalid recording eligibility evidence.");
+  }
+  return data;
+}
 
 export async function watchRunEvents(token: string, projectId: string, runId: string,
                                      signal: AbortSignal, onEvent: () => void): Promise<void> {
