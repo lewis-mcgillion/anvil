@@ -38,7 +38,10 @@ def test_runner_image_rejects_credentials_ports_and_volumes():
     for config in ({"config": {"Env": ["API_KEY=secret"]}},
                    {"config": {"Env": [], "ExposedPorts": {"443/tcp": {}}}},
                    {"config": {"Env": [], "Volumes": {"/host": {}}}},
-                   {"config": {"Env": [], "User": "root"}}):
+                   {"config": {"Env": [], "User": "root"}},
+                   {"config": {"Env": [], "User": "root:65534"}},
+                   {"config": {"Env": [], "User": "1000:1000"}},
+                   {"config": {"Env": [], "User": "65534"}}):
         with pytest.raises(IsolationUnavailable):
             verify_runner_image_config(config)
 
