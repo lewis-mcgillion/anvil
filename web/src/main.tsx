@@ -51,6 +51,11 @@ function ProjectOverview({ projects, client }: { projects: Project[]; client: Re
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [runError, setRunError] = useState<string>();
   const [loadingRuns, setLoadingRuns] = useState(true);
+  const [runQuery, setRunQuery] = useState("");
+  const [captureFilter, setCaptureFilter] = useState("all");
+  const visibleRuns = runs.filter((run) =>
+    (captureFilter === "all" || run.capture_state === captureFilter) &&
+    (`${run.agent_name} ${run.id}`.toLowerCase().includes(runQuery.toLowerCase())));
   useEffect(() => {
     if (!project) return;
     const controller = new AbortController();
@@ -73,10 +78,18 @@ function ProjectOverview({ projects, client }: { projects: Project[]; client: Re
     <p>Project ID: <code>{project.id}</code></p>
     <p>Retention: {project.retention_days} days</p>
     <h2>Runs</h2>
+    <label>Filter runs by agent or ID <input value={runQuery} onChange={(event) => setRunQuery(event.target.value)} /></label>
+    <label>Capture status <select value={captureFilter} onChange={(event) => setCaptureFilter(event.target.value)}>
+      <option value="all">All captures</option>
+      <option value="open">Open</option>
+      <option value="sealed_complete">Sealed complete</option>
+      <option value="sealed_incomplete">Sealed incomplete</option>
+    </select></label>
     {loadingRuns && <p role="status">Loading runs...</p>}
     {runError && <p role="alert">{runError}</p>}
     {!loadingRuns && !runError && runs.length === 0 && <p>No recorded runs in this project.</p>}
-    <ul>{runs.map((run) => <li key={run.id}><strong>{run.agent_name}</strong> <code>{run.id}</code>
+    {!loadingRuns && !runError && runs.length > 0 && visibleRuns.length === 0 && <p>No runs match these filters.</p>}
+    <ul>{visibleRuns.map((run) => <li key={run.id}><strong>{run.agent_name}</strong> <code>{run.id}</code>
       <span> — {run.capture_state}; {run.execution_state}; {captureQualityLabel({
         capture_status: run.capture_state, execution_outcome: run.execution_state,
       })}</span></li>)}</ul>
