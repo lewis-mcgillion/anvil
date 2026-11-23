@@ -252,6 +252,26 @@ async def test_model_request_sink_failure_cleans_pending_bookkeeping():
     assert not plugin._models and not plugin._chunks
 
 
+@pytest.mark.parametrize("failed_kind", ["model.completed", "model.failed"])
+async def test_model_terminal_sink_failure_cleans_pending_bookkeeping(failed_kind):
+    def broken_sink(kind, payload, correlation):
+        if kind == failed_kind:
+            raise RuntimeError("sink unavailable")
+
+    plugin = CapturePlugin(broken_sink)
+    class Broken(BaseLlm):
+        model: str = "offline"
+
+        async def generate_content_async(self, llm_request, stream=False):
+            if failed_kind == "model.failed":
+                raise RuntimeError("offline model failed")
+            yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text="ok")]))
+
+    with pytest.raises(Exception, match="sink unavailable"):
+        await execute(LlmAgent(name="broken", model=Broken()), [plugin])
+    assert not plugin._models and not plugin._chunks
+
+
 async def test_cancellation_releases_capture_bookkeeping():
     entered = asyncio.Event()
 
