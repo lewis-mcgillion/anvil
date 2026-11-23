@@ -1,6 +1,6 @@
 import pytest
 
-from anvil_server.broker_faults import BrokerFault, simulate_broker_fault
+from anvil_server.broker_faults import BrokerFault, InjectedBrokerFault, execute_broker_fault, simulate_broker_fault
 
 
 @pytest.mark.parametrize("kind", ["rate_limit", "disconnect", "truncated_stream", "delay"])
@@ -20,3 +20,47 @@ def test_post_dispatch_failure_preserves_paid_call_provenance():
 def test_rate_limit_requires_explicit_retry_after():
     with pytest.raises(ValueError):
         BrokerFault("rate_limit")
+
+
+@pytest.mark.asyncio
+async def test_fake_provider_is_never_called_for_pre_dispatch_rate_limit():
+    calls = []
+
+    async def provider():
+        calls.append("paid")
+
+    with pytest.raises(InjectedBrokerFault) as raised:
+        await execute_broker_fault(BrokerFault("rate_limit", retry_after_seconds=7), provider)
+    assert calls == []
+    assert raised.value.evidence.charged_calls == 0
+    assert raised.value.evidence.retry_after_seconds == 7
+
+
+@pytest.mark.asyncio
+async def test_fake_provider_post_dispatch_fault_charges_once_without_retry():
+    calls = []
+
+    async def provider():
+        calls.append("paid")
+        return {"response": "unused"}
+
+    with pytest.raises(InjectedBrokerFault) as raised:
+        await execute_broker_fault(BrokerFault("disconnect"), provider, after_dispatch=True)
+    assert calls == ["paid"]
+    assert raised.value.evidence.dispatched_calls == raised.value.evidence.charged_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_fake_provider_delay_is_bounded_and_observable():
+    delays = []
+
+    async def sleep(seconds):
+        delays.append(seconds)
+
+    async def provider():
+        return "response"
+
+    response, evidence = await execute_broker_fault(BrokerFault("delay", delay_ms=250), provider, sleep=sleep)
+    assert response == "response"
+    assert delays == [0.25]
+    assert evidence.charged_calls == 1

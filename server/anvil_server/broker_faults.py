@@ -1,5 +1,7 @@
 """Represent simulated broker faults without a provider dispatch capability."""
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -35,3 +37,24 @@ def simulate_broker_fault(fault: BrokerFault, *, dispatched: bool) -> BrokerFaul
         retry_after_seconds=fault.retry_after_seconds,
         simulated_delay_ms=fault.delay_ms,
     )
+
+
+class InjectedBrokerFault(RuntimeError):
+    def __init__(self, evidence: BrokerFaultEvidence):
+        super().__init__("Simulated broker fault")
+        self.evidence = evidence
+
+
+async def execute_broker_fault(
+    fault: BrokerFault, dispatch: Callable[[], Awaitable[object]],
+    *, after_dispatch: bool = False, sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> tuple[object, BrokerFaultEvidence]:
+    """Inject a bounded fault around a fake-provider call without retries or fallbacks."""
+    if fault.kind == "delay":
+        await sleep(fault.delay_ms / 1000)
+    if not after_dispatch and fault.kind != "delay":
+        raise InjectedBrokerFault(simulate_broker_fault(fault, dispatched=False))
+    result = await dispatch()
+    if after_dispatch and fault.kind != "delay":
+        raise InjectedBrokerFault(simulate_broker_fault(fault, dispatched=True))
+    return result, simulate_broker_fault(fault, dispatched=True)
