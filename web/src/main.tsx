@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ApiError, dashboardClient, listProjects, type Project } from "./client";
+import { ApiError, dashboardClient, listProjects, listProjectRuns, readRecording, watchRunEvents, type Project, type Run } from "./client";
+import { captureQualityLabel } from "./capture-quality";
 import "./style.css";
 
 class ErrorBoundary extends React.Component<React.PropsWithChildren, { failed: boolean }> {
@@ -42,18 +43,107 @@ function Page({ title, children }: React.PropsWithChildren<{ title: string }>) {
   return <><h1 ref={heading} tabIndex={-1}>{title}</h1>{children}</>;
 }
 
-function ProjectOverview({ projects }: { projects: Project[] }) {
+function ProjectOverview({ projects, client, token }: { projects: Project[]; client: ReturnType<typeof dashboardClient>; token: string }) {
   const { projectId } = useParams();
+  return <ProjectOverviewContent key={projectId} projectId={projectId} projects={projects} client={client} token={token} />;
+}
+
+function ProjectOverviewContent({ projectId, projects, client, token }: {
+  projectId?: string; projects: Project[]; client: ReturnType<typeof dashboardClient>; token: string;
+}) {
   const project = projects.find((item) => item.id === projectId);
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [cursor, setCursor] = useState<string>();
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string>();
+  const [loadingRuns, setLoadingRuns] = useState(true);
+  const [runQuery, setRunQuery] = useState("");
+  const [captureFilter, setCaptureFilter] = useState("all");
+  const [watchedRun, setWatchedRun] = useState<string>();
+  const [watchError, setWatchError] = useState<string>();
+  const [verifiedRecording, setVerifiedRecording] = useState<string>();
+  const [recordingEligibility, setRecordingEligibility] = useState<string>();
+  const [recordingError, setRecordingError] = useState<string>();
+  const [eligibilityScope, setEligibilityScope] = useState<string>();
+  useEffect(() => {
+    if (!project || !verifiedRecording) return;
+    const controller = new AbortController();
+    setRecordingEligibility(undefined);
+    setRecordingError(undefined);
+    readRecording(client, controller.signal, project.id, verifiedRecording).then((recording) => {
+      if (!controller.signal.aborted) {
+        setRecordingEligibility(recording.replay_eligibility);
+        setEligibilityScope(`${project.id}:${recording.id}`);
+      }
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setRecordingError(error instanceof Error ? error.message : "Recording unavailable");
+    });
+    return () => controller.abort();
+  }, [client, project?.id, verifiedRecording]);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    if (!project || !watchedRun) return;
+    const controller = new AbortController();
+    setWatchError(undefined);
+    watchRunEvents(token, project.id, watchedRun, controller.signal, () => {
+      setCursor(undefined);
+      setRevision((value) => value + 1);
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setWatchError(error instanceof Error ? error.message : "Live updates unavailable");
+    });
+    return () => controller.abort();
+  }, [token, project?.id, watchedRun]);
+  const visibleRuns = runs.filter((run) =>
+    (captureFilter === "all" || run.capture_state === captureFilter) &&
+    (`${run.agent_name} ${run.id}`.toLowerCase().includes(runQuery.toLowerCase())));
+  useEffect(() => {
+    if (!project) return;
+    const controller = new AbortController();
+    setLoadingRuns(true);
+    setRunError(undefined);
+    listProjectRuns(client, controller.signal, project.id, cursor).then((page) => {
+      if (controller.signal.aborted) return;
+      setRuns((previous) => cursor ? [...previous, ...page.items.filter((run) =>
+        !previous.some((item) => item.id === run.id))] : page.items);
+      setNextCursor(page.next_cursor);
+    }).catch((failure: unknown) => {
+      if (!controller.signal.aborted) setRunError(failure instanceof Error ? failure.message : "Unable to load runs");
+    }).finally(() => { if (!controller.signal.aborted) setLoadingRuns(false); });
+    return () => controller.abort();
+  }, [client, project?.id, cursor, revision]);
   if (!project) {
     return <Page title="Project unavailable"><p>This project is not in the loaded authorized project list. Load additional projects or choose a visible project.</p><Link to="/">Choose a project</Link></Page>;
   }
   return <Page title={project.name}>
     <p>Project ID: <code>{project.id}</code></p>
     <p>Retention: {project.retention_days} days</p>
-    <h2>Investigation capabilities</h2>
-    <p>Run explorer and playback are not available in this dashboard yet. The Python server must implement the published run-list, event-stream and recording-projection contracts first.</p>
-    <p>No capture completeness, execution outcome or replay eligibility is inferred from missing evidence. This page never schedules execution.</p>
+    <h2>Runs</h2>
+    <label>Filter runs by agent or ID <input value={runQuery} onChange={(event) => setRunQuery(event.target.value)} /></label>
+    <label>Capture status <select value={captureFilter} onChange={(event) => setCaptureFilter(event.target.value)}>
+      <option value="all">All captures</option>
+      <option value="open">Open</option>
+      <option value="sealed_complete">Sealed complete</option>
+      <option value="sealed_incomplete">Sealed incomplete</option>
+    </select></label>
+    {loadingRuns && <p role="status">Loading runs...</p>}
+    {runError && <p role="alert">{runError}</p>}
+    {!loadingRuns && !runError && runs.length === 0 && <p>No recorded runs in this project.</p>}
+    {!loadingRuns && !runError && runs.length > 0 && visibleRuns.length === 0 && <p>No runs match these filters.</p>}
+    {watchError && <p role="alert">Live updates stopped: {watchError}</p>}
+    <ul>{visibleRuns.map((run) => <li key={run.id}><strong>{run.agent_name}</strong> <code>{run.id}</code>
+      <span> — {run.capture_state}; {run.execution_state}; {captureQualityLabel({
+        capture_status: run.capture_state, execution_outcome: run.execution_state,
+      })}</span> {run.recording_id && <span>Recording: <code>{run.recording_id}</code>
+        <button onClick={() => setVerifiedRecording(run.recording_id ?? undefined)}>Check recording eligibility</button>
+        {eligibilityScope === `${project.id}:${run.recording_id}` && recordingEligibility &&
+          <span> Manifest replay eligibility: {recordingEligibility}</span>}
+        {verifiedRecording === run.recording_id && recordingError && <span role="alert">{recordingError}</span>}
+      </span>}
+      <button onClick={() => setWatchedRun(watchedRun === run.id ? undefined : run.id)}>
+        {watchedRun === run.id ? "Stop live updates" : `Watch ${run.agent_name}`}
+      </button></li>)}</ul>
+    {nextCursor && <button disabled={loadingRuns} onClick={() => setCursor(nextCursor)}>Load more runs</button>}
+    <p role="note">Replay eligibility is not verified by run summaries. A sealed recording manifest is required before any run can be considered replay-eligible. This dashboard never executes agent code.</p>
   </Page>;
 }
 
@@ -124,7 +214,7 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: (message?: 
         <Route path="/" element={<Page title="Projects">
           {projects.length === 0 ? <p>No projects are visible to this key. Ask an administrator for a project grant.</p> : <ul>{projects.map((project) => <li key={project.id}><Link to={`/projects/${project.id}`}>{project.name}</Link></li>)}</ul>}
         </Page>} />
-        <Route path="/projects/:projectId" element={<ProjectOverview projects={projects} />} />
+        <Route path="/projects/:projectId" element={<ProjectOverview projects={projects} client={client} token={token} />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Page title="Page not found"><Link to="/">Return to projects</Link></Page>} />
       </Routes>}

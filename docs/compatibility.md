@@ -1,5 +1,16 @@
 # Compatibility policy
 
+Run list responses may include a nullable `recording_id` identifying the latest
+sealed recording associated with a run. Older clients can ignore this optional
+field; clients must not interpret its presence as proof of replay eligibility.
+Replay eligibility requires separately verified manifest evidence.
+Recording summary responses can now include `replay_eligibility` sourced from
+their immutable manifest; missing legacy evidence is reported as `ineligible`.
+Run summaries alone continue to establish no replay eligibility.
+`GET /recordings/{recording_id}` requires the `project_id` query parameter,
+matching the existing project-scoped runtime authorization. Unscoped reads
+remain rejected rather than inferring a project from the recording ID.
+
 Anvil's public contracts are:
 
 - the REST API (`api/openapi.yaml`, base path `/v1`),

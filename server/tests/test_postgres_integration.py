@@ -528,6 +528,7 @@ async def test_admin_settings_key_lifecycle_and_recording_read(engine):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         runs = await client.get("/v1/runs", params={"project_id": str(PROJECT), "limit": 1}, headers=headers)
         assert runs.status_code == 200, runs.text
+        assert runs.json()["items"][0]["recording_id"] == sealed["recording_id"]
         projects = await client.get("/v1/projects", params={"project_id": str(PROJECT)}, headers=headers)
         assert projects.status_code == 200, projects.text
         assert len(projects.json()["items"]) == 1
@@ -1007,8 +1008,16 @@ async def test_an_audit_row_holds_no_prompt_or_token(engine):
     app.state.engine = engine
     headers = {"Authorization": f"Bearer {token}"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        assert (await client.get(f"/v1/projects/{PROJECT}/recordings/{recording_id}",
-                                 headers=headers)).status_code == 200
+        response = await client.get(f"/v1/projects/{PROJECT}/recordings/{recording_id}", headers=headers)
+        assert response.status_code == 200
+        async with project_connection(engine, PROJECT) as connection:
+            manifest = (await connection.execute(text("""
+                SELECT manifest FROM recordings WHERE project_id = :project AND id = :recording
+            """), {"project": PROJECT, "recording": recording_id})).scalar_one()
+        expected = ("eligible" if response.json()["capture_state"] == "sealed_complete"
+                    and manifest.get("capture_completeness") == "sealed_complete"
+                    and manifest.get("replay_eligibility") == "eligible" else "ineligible")
+        assert response.json()["replay_eligibility"] == expected
     async with project_connection(engine, PROJECT) as connection:
         dumped = (await connection.execute(text("""
             SELECT coalesce(string_agg(to_jsonb(audit_events)::text, ' '), '')

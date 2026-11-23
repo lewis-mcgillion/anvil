@@ -20,6 +20,152 @@ async function signIn(page: Page, key = "test-read-key") {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
 }
 
+
+test("project runs filter by agent identity and capture state", async ({ page }) => {
+  await projects(page, [first]);
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  await page.route("**/v1/runs?*", (route) => route.fulfill({ json: {
+    items: [
+      { id: runId, project_id: first.id, agent_name: "Inventory",
+        capture_state: "sealed_complete", execution_state: "succeeded",
+        recording_id: "0199b167-0000-7000-8000-000000000031" },
+      { id: "0199b167-0000-7000-8000-000000000022", project_id: first.id,
+        agent_name: "Billing", capture_state: "open", execution_state: "running" },
+    ], next_cursor: null,
+  } }));
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await expect(page.getByText("Inventory", { exact: true })).toBeVisible();
+  await expect(page.getByText("Billing", { exact: true })).toBeVisible();
+  await expect(page.getByRole("note")).toContainText("Replay eligibility is not verified");
+  await expect(page.getByRole("button", { name: "Check recording eligibility" })).toBeVisible();
+  await page.getByLabel("Filter runs by agent or ID").fill("inventory");
+  await expect(page.getByText("Billing", { exact: true })).toHaveCount(0);
+  await page.getByLabel("Filter runs by agent or ID").fill("");
+  await page.getByLabel("Capture status").selectOption("open");
+  await expect(page.getByText("Inventory", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Billing", { exact: true })).toBeVisible();
+});
+
+test("switching projects discards prior run and recording state", async ({ page }) => {
+  await projects(page);
+  await page.route("**/v1/runs?*", (route) => {
+    const projectId = new URL(route.request().url()).searchParams.get("project_id");
+    return route.fulfill({ json: { items: [{
+      id: projectId === first.id ? "0199b167-0000-7000-8000-000000000021" : "0199b167-0000-7000-8000-000000000022",
+      project_id: projectId, agent_name: projectId === first.id ? "Inventory" : "Billing",
+      capture_state: "open", execution_state: "running",
+    }], next_cursor: null } });
+  });
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await expect(page.getByText("Inventory", { exact: true })).toBeVisible();
+  await page.getByLabel("Filter runs by agent or ID").fill("inventory");
+  await page.getByLabel("Project", { exact: true }).selectOption(second.id);
+  await expect(page.getByText("Billing", { exact: true })).toBeVisible();
+  await expect(page.getByText("Inventory", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Filter runs by agent or ID")).toHaveValue("");
+});
+
+test("recording eligibility is obtained only from a scoped manifest lookup", async ({ page }) => {
+  await projects(page, [first]);
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  const recordingId = "0199b167-0000-7000-8000-000000000031";
+  await page.route("**/v1/runs?*", (route) => route.fulfill({ json: {
+    items: [{ id: runId, project_id: first.id, agent_name: "Inventory",
+      capture_state: "sealed_complete", execution_state: "succeeded", recording_id: recordingId }], next_cursor: null,
+  } }));
+  await page.route(`**/v1/recordings/${recordingId}*`, (route) => {
+    expect(new URL(route.request().url()).searchParams.get("project_id")).toBe(first.id);
+    return route.fulfill({ json: { id: recordingId, project_id: first.id,
+      replay_eligibility: "ineligible", manifest_hash: "sha256:" + "a".repeat(64),
+      capture_state: "sealed_complete", event_count: 2, sealed_at: "2026-01-01T12:00:00Z" } });
+  });
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await expect(page.getByText("Manifest replay eligibility:")).toHaveCount(0);
+  await page.getByRole("button", { name: "Check recording eligibility" }).click();
+  await expect(page.getByText("Manifest replay eligibility: ineligible")).toBeVisible();
+});
+
+test("watching a run refreshes its capture status without executing it", async ({ page }) => {
+  await projects(page, [first]);
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  let refreshed = false;
+  await page.route("**/v1/runs?*", (route) => route.fulfill({ json: {
+    items: [{ id: runId, project_id: first.id, agent_name: "Inventory",
+      capture_state: refreshed ? "sealed_incomplete" : "open", execution_state: "failed" }],
+    next_cursor: null,
+  } }));
+  await page.route(`**/v1/projects/${first.id}/runs/${runId}/watch`, (route) => {
+    refreshed = true;
+    return route.fulfill({ contentType: "text/event-stream", body: "event: updated\ndata: {}\n\n" });
+  });
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await expect(page.getByText("open; failed", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Watch Inventory" }).click();
+  await expect(page.getByText("sealed_incomplete; failed", { exact: false })).toBeVisible();
+  await expect(page.getByRole("note")).toContainText("Replay eligibility is not verified");
+});
+
+test("run watch accepts SSE CRLF delimiters", async ({ page }) => {
+  await projects(page, [first]);
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  let refreshed = false;
+  await page.route("**/v1/runs?*", (route) => route.fulfill({ json: {
+    items: [{ id: runId, project_id: first.id, agent_name: "Inventory",
+      capture_state: refreshed ? "sealed_incomplete" : "open", execution_state: "failed" }],
+    next_cursor: null,
+  } }));
+  await page.route(`**/v1/projects/${first.id}/runs/${runId}/watch`, (route) => {
+    refreshed = true;
+    return route.fulfill({ contentType: "text/event-stream", body: "event: updated\r\ndata: {}\r\n\r\n" });
+  });
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByRole("button", { name: "Watch Inventory" }).click();
+  await expect(page.getByText("sealed_incomplete; failed", { exact: false })).toBeVisible();
+});
+
+test("run watch reports malformed SSE data rather than treating it as an update", async ({ page }) => {
+  await projects(page, [first]);
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  await page.route("**/v1/runs?*", (route) => route.fulfill({ json: {
+    items: [{ id: runId, project_id: first.id, agent_name: "Inventory",
+      capture_state: "open", execution_state: "running" }], next_cursor: null,
+  } }));
+  await page.route(`**/v1/projects/${first.id}/runs/${runId}/watch`, (route) =>
+    route.fulfill({ contentType: "text/event-stream", body: "event: updated\ndata: {broken}\n\n" }));
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByRole("button", { name: "Watch Inventory" }).click();
+  await expect(page.getByRole("alert")).toContainText("invalid JSON evidence");
+  await expect(page.getByText("open; running", { exact: false })).toBeVisible();
+});
+
+test("run watch rejects non-object JSON data", async ({ page }) => {
+  await projects(page, [first]);
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  await page.route("**/v1/runs?*", (route) => route.fulfill({ json: {
+    items: [{ id: runId, project_id: first.id, agent_name: "Inventory",
+      capture_state: "open", execution_state: "running" }], next_cursor: null,
+  } }));
+  await page.route(`**/v1/projects/${first.id}/runs/${runId}/watch`, (route) =>
+    route.fulfill({ contentType: "text/event-stream", body: "data: null\n\n" }));
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByRole("button", { name: "Watch Inventory" }).click();
+  await expect(page.getByRole("alert")).toContainText("invalid JSON evidence");
+});
+
 test("keyboard-only sign in, project switching, routing, skip link and sign out", async ({ page }) => {
   await projects(page);
   await page.goto("/");
@@ -209,7 +355,8 @@ test("safe text rendering, no execution requests and automated accessibility", a
   await expect(page.locator("img")).toHaveCount(0);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(apiRequests.length).toBeGreaterThan(0);
-  expect(apiRequests.every((request) => request === "GET /v1/projects")).toBe(true);
+  expect(apiRequests.every((request) =>
+    request === "GET /v1/projects" || request === "GET /v1/runs")).toBe(true);
 });
 
 test("empty keys do not submit and keys are never sent through redirects", async ({ page }) => {
@@ -254,7 +401,7 @@ test("a later load does not steal focus from the reader", async ({ page }) => {
   await page.getByRole("button", { name: "Load more projects" }).dispatchEvent("click");
 
   // The reader keeps focus once the project page renders again.
-  await expect(page.locator("option")).toHaveCount(3);
+  await expect(selector.locator("option")).toHaveCount(3);
   await expect(selector).toBeFocused();
   await expect(page.getByRole("heading", { name: "Alpha", exact: true })).not.toBeFocused();
 });
