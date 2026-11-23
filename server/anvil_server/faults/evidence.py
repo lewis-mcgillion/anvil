@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from anvil_server.database import project_connection
+from anvil_server.suites.assertions import FaultObservation
 
 from .engine import Evidence, FaultReport
 
@@ -42,6 +43,11 @@ def fault_report_payload(report: FaultReport) -> dict:
         "all_faults_applied": report.all_faults_applied,
         "report_sha256": report.digest,
     }
+
+
+def suite_fault_observations(report: FaultReport) -> list[FaultObservation]:
+    return [FaultObservation(fault_id=item.fault_id, applied=item.status == "applied")
+            for item in report.evidence]
 
 
 async def persist_fault_report(engine: AsyncEngine, project_id: UUID, run_id: UUID,
