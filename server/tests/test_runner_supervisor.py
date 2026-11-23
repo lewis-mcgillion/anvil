@@ -154,3 +154,49 @@ async def test_supervisor_never_acks_unpersisted_events():
         await supervise_recorded_messages(reader, Writer(), run_id="run",
                                           persist_events=failed_persistence)
     assert outgoing == []
+
+
+@pytest.mark.asyncio
+async def test_supervisor_only_forwards_correlated_fixture_model_response():
+    reader = asyncio.StreamReader()
+    reader.feed_data(framed(RunnerMessage(model_request={"request_id": "model-1"}))
+                     + framed(RunnerMessage(finished={"outcome": 1})))
+    reader.feed_eof()
+    outgoing = []
+
+    class Writer:
+        def write(self, data):
+            outgoing.append(data)
+
+        async def drain(self):
+            pass
+
+    async def persist(batch):
+        pass
+
+    async def resolve(request):
+        return SupervisorMessage(model_response={"request_id": request.request_id,
+                                                  "error": {"code": "MODEL_UNMATCHED"}})
+
+    assert await supervise_recorded_messages(reader, Writer(), run_id="run",
+                                              persist_events=persist, resolve_model=resolve) == 1
+    assert outgoing[0] == framed(SupervisorMessage(model_response={
+        "request_id": "model-1", "error": {"code": "MODEL_UNMATCHED"},
+    }))
+
+
+@pytest.mark.asyncio
+async def test_supervisor_rejects_mismatched_fixture_response_id():
+    reader = asyncio.StreamReader()
+    reader.feed_data(framed(RunnerMessage(tool_request={"request_id": "tool-1"})))
+    reader.feed_eof()
+
+    async def persist(batch):
+        pass
+
+    async def resolve(request):
+        return SupervisorMessage(tool_response={"request_id": "other", "result_json": b"{}"})
+
+    with pytest.raises(IsolationUnavailable, match="correlation"):
+        await supervise_recorded_messages(reader, None, run_id="run",
+                                          persist_events=persist, resolve_tool=resolve)

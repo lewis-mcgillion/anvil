@@ -65,6 +65,8 @@ async def receive_terminal_outcome(reader: asyncio.StreamReader, writer: asyncio
 async def supervise_recorded_messages(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                                       *, run_id: str,
                                       persist_events: Callable[[object], Awaitable[None]],
+                                      resolve_model: Callable[[object], Awaitable[SupervisorMessage]] | None = None,
+                                      resolve_tool: Callable[[object], Awaitable[SupervisorMessage]] | None = None,
                                       timeout_seconds: float = 60) -> int:
     if not run_id or timeout_seconds <= 0 or not callable(persist_events):
         raise IsolationUnavailable("Invalid recorded runner supervision configuration")
@@ -75,6 +77,17 @@ async def supervise_recorded_messages(reader: asyncio.StreamReader, writer: asyn
             kind = message.WhichOneof("message")
             if kind == "heartbeat":
                 await write_supervisor_message(writer, SupervisorMessage(heartbeat=message.heartbeat))
+            elif kind in {"model_request", "tool_request"}:
+                request = getattr(message, kind)
+                resolver = resolve_model if kind == "model_request" else resolve_tool
+                if not request.request_id or resolver is None:
+                    raise IsolationUnavailable("Runner requested unavailable fixture mediation")
+                response = await resolver(request)
+                expected_kind = "model_response" if kind == "model_request" else "tool_response"
+                if (not isinstance(response, SupervisorMessage) or response.WhichOneof("message") != expected_kind
+                        or getattr(response, expected_kind).request_id != request.request_id):
+                    raise IsolationUnavailable("Runner fixture response correlation mismatch")
+                await write_supervisor_message(writer, response)
             elif kind == "emit_events":
                 batch = message.emit_events
                 if batch.run_id != run_id or not batch.stream_id or not batch.events:
