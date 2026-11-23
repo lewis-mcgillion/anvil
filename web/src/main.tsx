@@ -92,7 +92,7 @@ function ProjectOverview({ projects, client }: { projects: Project[]; client: Re
       <option value="run">Run</option><option value="recording">Recording</option>
     </select></label>
     <label>Target ID <input value={targetId} onChange={(event) => setTargetId(event.target.value)} /></label>
-    <p>Type <code>{targetKind}:{targetId || "target-id"}</code> to confirm.</p>
+    <p>Type <code>{project.id}:{targetKind}:{targetId || "target-id"}</code> to confirm.</p>
     <label>Exact confirmation <input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
     <p role="status">{confirmationStatus}</p>
     <button disabled>Deletion submission unavailable</button>

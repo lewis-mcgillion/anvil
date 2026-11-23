@@ -21,7 +21,7 @@ test("deletion status enforces project scope and confirmation never submits", as
   await page.getByRole("button", { name: "Inspect deletion status" }).click();
   await expect(page.getByText("Deletion status: queued")).toBeVisible();
   await page.getByLabel("Target ID").fill(deletionId);
-  await page.getByLabel("Exact confirmation").fill(`run:${deletionId}`);
+  await page.getByLabel("Exact confirmation").fill(`${project.id}:run:${deletionId}`);
   await expect(page.getByRole("status")).toContainText("Confirmed locally");
   await expect(page.getByRole("button", { name: "Deletion submission unavailable" })).toBeDisabled();
   expect(writes).toBe(0);

@@ -8,7 +8,7 @@ export function confirmProjectDeletion(target: DeleteTarget, activeProject: stri
   if (target.targetKind !== "run" && target.targetKind !== "recording") {
     throw new Error("Unsupported deletion target");
   }
-  if (typedConfirmation !== `${target.targetKind}:${target.targetId}`) {
+  if (typedConfirmation !== `${target.projectId}:${target.targetKind}:${target.targetId}`) {
     throw new Error("Type the exact deletion target to confirm");
   }
   return target;

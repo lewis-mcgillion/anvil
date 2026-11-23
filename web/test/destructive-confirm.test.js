@@ -13,7 +13,9 @@ const check = (...args) => runInNewContext(`${compiled}\nexports.confirmProjectD
 const target = { projectId: 'project-a', targetId: 'recording-1', targetKind: 'recording' };
 
 test('destructive action requires exact target and current project', () => {
-  assert.equal(check(target, 'project-a', 'recording:recording-1').targetId, 'recording-1');
-  assert.throws(() => check(target, 'project-b', 'recording:recording-1'), /unauthorized project/);
-  assert.throws(() => check(target, 'project-a', 'recording:other'), /exact deletion target/);
+  assert.equal(check(target, 'project-a', 'project-a:recording:recording-1').targetId, 'recording-1');
+  assert.throws(() => check(target, 'project-b', 'project-a:recording:recording-1'), /unauthorized project/);
+  assert.throws(() => check(target, 'project-a', 'recording:recording-1'), /exact deletion target/);
+  assert.throws(() => check(target, 'project-a', 'project-b:recording:recording-1'), /exact deletion target/);
+  assert.throws(() => check(target, 'project-a', 'project-a:recording:other'), /exact deletion target/);
 });
