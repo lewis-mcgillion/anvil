@@ -1,4 +1,7 @@
-"""Fail-closed resource limits for a future isolated runner supervisor."""
+"""Resource policy arguments for a future isolated runner supervisor.
+
+These arguments alone do not establish seccomp, filesystem or UDS isolation.
+"""
 
 from dataclasses import dataclass
 
@@ -13,6 +16,15 @@ class RunnerLimits:
     memory_bytes: int
     process_count: int
     wall_seconds: int
+
+    def docker_flags(self) -> tuple[str, ...]:
+        self.validate()
+        cpu_quota = self.cpu_millis * 100
+        return ("--network=none", "--read-only", "--cap-drop=ALL",
+                "--security-opt=no-new-privileges", "--pids-limit", str(self.process_count),
+                "--memory", str(self.memory_bytes), "--memory-swap", str(self.memory_bytes),
+                "--cpu-period", "100000", "--cpu-quota", str(cpu_quota),
+                "--user", "65534:65534")
 
     def validate(self) -> None:
         bounds = ((self.cpu_millis, 100, 4000),
