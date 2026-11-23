@@ -1,6 +1,32 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+test("deletion status enforces project scope and confirmation never submits", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  const deletionId = "0199b167-0000-7000-8000-000000000021";
+  let writes = 0;
+  await page.route("**/v1/**", (route) => {
+    if (route.request().method() !== "GET") writes++;
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/projects")) return route.fulfill({ json: { items: [project], next_cursor: null } });
+    if (url.searchParams.get("project_id") !== project.id) return route.fulfill({ status: 403, json: {} });
+    return route.fulfill({ json: { id: deletionId, project_id: project.id, status: "queued" } });
+  });
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Deletion ID").fill(deletionId);
+  await page.getByRole("button", { name: "Inspect deletion status" }).click();
+  await expect(page.getByText("Deletion status: queued")).toBeVisible();
+  await page.getByLabel("Target ID").fill(deletionId);
+  await page.getByLabel("Exact confirmation").fill(`${project.id}:run:${deletionId}`);
+  await expect(page.getByRole("status")).toContainText("Confirmed locally");
+  await expect(page.getByRole("button", { name: "Deletion submission unavailable" })).toBeDisabled();
+  expect(writes).toBe(0);
+});
+
 const first = {
   id: "0199b167-0000-7000-8000-000000000011",
   name: "Alpha",
@@ -254,7 +280,7 @@ test("a later load does not steal focus from the reader", async ({ page }) => {
   await page.getByRole("button", { name: "Load more projects" }).dispatchEvent("click");
 
   // The reader keeps focus once the project page renders again.
-  await expect(page.locator("option")).toHaveCount(3);
+  await expect(selector.locator("option")).toHaveCount(3);
   await expect(selector).toBeFocused();
   await expect(page.getByRole("heading", { name: "Alpha", exact: true })).not.toBeFocused();
 });

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ApiError, dashboardClient, listProjects, type Project } from "./client";
+import { ApiError, dashboardClient, listProjects, readDeletion, type Deletion, type Project } from "./client";
+import { confirmProjectDeletion, type DeleteTarget } from "./destructive-confirm";
 import "./style.css";
 
 class ErrorBoundary extends React.Component<React.PropsWithChildren, { failed: boolean }> {
@@ -42,9 +43,35 @@ function Page({ title, children }: React.PropsWithChildren<{ title: string }>) {
   return <><h1 ref={heading} tabIndex={-1}>{title}</h1>{children}</>;
 }
 
-function ProjectOverview({ projects }: { projects: Project[] }) {
+function ProjectOverview({ projects, client }: { projects: Project[]; client: ReturnType<typeof dashboardClient> }) {
   const { projectId } = useParams();
   const project = projects.find((item) => item.id === projectId);
+  const [deletionId, setDeletionId] = useState("");
+  const [selectedDeletion, setSelectedDeletion] = useState("");
+  const [deletion, setDeletion] = useState<Deletion>();
+  const [deletionError, setDeletionError] = useState<string>();
+  const [targetKind, setTargetKind] = useState<DeleteTarget["targetKind"]>("run");
+  const [targetId, setTargetId] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  let confirmationStatus = "Exact target confirmation required";
+  if (project) {
+    try {
+      confirmProjectDeletion({ projectId: project.id, targetId, targetKind }, project.id, confirmation);
+      confirmationStatus = "Confirmed locally; destructive API submission is disabled";
+    } catch (error) { confirmationStatus = error instanceof Error ? error.message : "Confirmation rejected"; }
+  }
+  useEffect(() => {
+    if (!project || !selectedDeletion) return;
+    const controller = new AbortController();
+    setDeletion(undefined);
+    setDeletionError(undefined);
+    readDeletion(client, controller.signal, project.id, selectedDeletion).then((value) => {
+      if (!controller.signal.aborted) setDeletion(value);
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setDeletionError(error instanceof Error ? error.message : "Status unavailable");
+    });
+    return () => controller.abort();
+  }, [client, project?.id, selectedDeletion]);
   if (!project) {
     return <Page title="Project unavailable"><p>This project is not in the loaded authorized project list. Load additional projects or choose a visible project.</p><Link to="/">Choose a project</Link></Page>;
   }
@@ -52,6 +79,23 @@ function ProjectOverview({ projects }: { projects: Project[] }) {
     <p>Project ID: <code>{project.id}</code></p>
     <p>Retention: {project.retention_days} days</p>
     <h2>Investigation capabilities</h2>
+    <h3>Deletion status (read only)</h3>
+    <form onSubmit={(event) => { event.preventDefault(); setSelectedDeletion(deletionId); }}>
+      <label>Deletion ID <input required pattern="[0-9a-fA-F-]{36}" value={deletionId}
+        onChange={(event) => setDeletionId(event.target.value)} /></label>
+      <button type="submit">Inspect deletion status</button>
+    </form>
+    {deletionError && <p role="alert">{deletionError}</p>}
+    {deletion && <p>Deletion status: {deletion.status}</p>}
+    <h3>Destructive confirmation preview</h3>
+    <label>Target type <select value={targetKind} onChange={(event) => setTargetKind(event.target.value as DeleteTarget["targetKind"])}>
+      <option value="run">Run</option><option value="recording">Recording</option>
+    </select></label>
+    <label>Target ID <input value={targetId} onChange={(event) => setTargetId(event.target.value)} /></label>
+    <p>Type <code>{project.id}:{targetKind}:{targetId || "target-id"}</code> to confirm.</p>
+    <label>Exact confirmation <input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
+    <p role="status">{confirmationStatus}</p>
+    <button disabled>Deletion submission unavailable</button>
     <p>Run explorer and playback are not available in this dashboard yet. The Python server must implement the published run-list, event-stream and recording-projection contracts first.</p>
     <p>No capture completeness, execution outcome or replay eligibility is inferred from missing evidence. This page never schedules execution.</p>
   </Page>;
@@ -124,7 +168,7 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: (message?: 
         <Route path="/" element={<Page title="Projects">
           {projects.length === 0 ? <p>No projects are visible to this key. Ask an administrator for a project grant.</p> : <ul>{projects.map((project) => <li key={project.id}><Link to={`/projects/${project.id}`}>{project.name}</Link></li>)}</ul>}
         </Page>} />
-        <Route path="/projects/:projectId" element={<ProjectOverview projects={projects} />} />
+        <Route path="/projects/:projectId" element={<ProjectOverview projects={projects} client={client} />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Page title="Page not found"><Link to="/">Return to projects</Link></Page>} />
       </Routes>}

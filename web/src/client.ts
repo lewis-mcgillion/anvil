@@ -2,6 +2,18 @@ import createClient from "openapi-fetch";
 import type { components, paths } from "./api-types";
 
 export type Project = components["schemas"]["Project"];
+export type Deletion = components["schemas"]["Deletion"];
+
+export async function readDeletion(client: ReturnType<typeof dashboardClient>, signal: AbortSignal,
+                                   projectId: string, deletionId: string) {
+  const { data } = await client.GET("/deletions/{deletion_id}", {
+    params: { path: { deletion_id: deletionId }, query: { project_id: projectId } }, signal,
+  });
+  if (!data || data.id !== deletionId || data.project_id !== projectId || typeof data.status !== "string") {
+    throw new Error("Invalid deletion status; no data was accepted.");
+  }
+  return data;
+}
 
 export class ApiError extends Error {
   constructor(
