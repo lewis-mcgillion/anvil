@@ -237,6 +237,10 @@ into an import.
   headers, and validates issuer, audience, expiry and project identity after
   signature verification. The deployment must provision and rotate trusted
   JWKS data securely; this verifier is not yet wired into API authorization.
+  When configured, the API requires `ANVIL_OIDC_ISSUER`,
+  `ANVIL_OIDC_AUDIENCE` and an absolute `ANVIL_OIDC_JWKS_FILE` path; partial
+  configuration or unreadable/malformed key files fail startup. Rotate the
+  mounted file atomically; automatic remote refresh is not implemented.
 - Deletion and export jobs operate within the caller's project graph only;
   cross-project references are rejected with precise error codes
   (ADR-0003).

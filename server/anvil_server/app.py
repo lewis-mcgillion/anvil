@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 from .database import engine_for, project_connection
 from .secret_files import deployment_secret
+from .oidc_config import oidc_settings
 from .http_security import SecurityMiddleware
 from .bundles import MAX_BUNDLE
 from .playback import (
@@ -63,6 +64,7 @@ async def lifespan(application: FastAPI):
     application.state.engine = engine_for(database_url) if database_url else None
     cursor_secret = deployment_secret("ANVIL_CURSOR_SECRET")
     application.state.cursor_secret = cursor_secret.encode() if cursor_secret and len(cursor_secret) >= 16 else None
+    application.state.oidc = oidc_settings()
     try:
         yield
     finally:
