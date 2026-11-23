@@ -296,3 +296,30 @@ async def test_persisted_attempt_writes_evidence_before_job_completion(monkeypat
                                          identifier, sample(), run)
     assert result["outcome"] == "succeeded"
     assert events == ["acquire", "run", "persist", "complete"]
+
+
+@pytest.mark.asyncio
+async def test_persisted_attempt_does_not_complete_job_when_seal_fails(monkeypatch):
+    from uuid import UUID
+
+    completed = []
+
+    class Queue:
+        async def acquire_job(self, *args):
+            return {"id": args[1]}
+
+        async def complete(self, *args):
+            completed.append(args)
+
+    async def persist(*args):
+        raise RuntimeError("database unavailable")
+
+    async def run():
+        pass
+
+    monkeypatch.setattr("anvil_server.attempt_provenance.persist_evidence", persist)
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await run_persisted_attempt(None, Queue(), identifier, identifier,
+                                    identifier, sample(), run)
+    assert completed == []
