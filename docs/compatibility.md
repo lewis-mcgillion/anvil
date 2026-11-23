@@ -1,5 +1,10 @@
 # Compatibility policy
 
+The read-only `GET /runs/{run_id}/events` endpoint requires a `project_id`
+query parameter to enforce project-scoped authorization. The OpenAPI contract
+now documents this existing runtime requirement. Clients must provide the
+authorized project ID; an omitted scope is rejected rather than inferred.
+
 Anvil's public contracts are:
 
 - the REST API (`api/openapi.yaml`, base path `/v1`),

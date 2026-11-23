@@ -2,6 +2,37 @@ import createClient from "openapi-fetch";
 import type { components, paths } from "./api-types";
 
 export type Project = components["schemas"]["Project"];
+export type CaptureEvent = components["schemas"]["Event"];
+
+const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+function validEvent(value: unknown, runId: string): value is CaptureEvent {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const event = value as Record<string, unknown>;
+  return event.schema_version === "1" && event.run_id === runId &&
+    typeof event.event_id === "string" && uuid.test(event.event_id) &&
+    typeof event.stream_id === "string" && uuid.test(event.stream_id) &&
+    Number.isSafeInteger(event.sequence) && (event.sequence as number) >= 0 &&
+    typeof event.type === "string" && event.type.length > 0 &&
+    typeof event.occurred_at === "string" && Number.isFinite(Date.parse(event.occurred_at)) &&
+    event.payload !== null && typeof event.payload === "object" && !Array.isArray(event.payload) &&
+    (event.parent_event_ids === undefined || (Array.isArray(event.parent_event_ids) &&
+      event.parent_event_ids.every((parent) => typeof parent === "string" && uuid.test(parent))));
+}
+
+export async function listRunEvents(client: ReturnType<typeof dashboardClient>, signal: AbortSignal,
+                                    projectId: string, runId: string, cursor?: string) {
+  const { data } = await client.GET("/runs/{run_id}/events", {
+    params: { path: { run_id: runId }, query: { project_id: projectId, limit: 500, ...(cursor ? { cursor } : {}) } }, signal,
+  });
+  if (!data || !Array.isArray(data.items) ||
+      !(data.next_cursor === null || (typeof data.next_cursor === "string" && data.next_cursor.length > 0)) ||
+      data.items.some((event) => !validEvent(event, runId)) ||
+      new Set(data.items.map((event) => event.event_id)).size !== data.items.length) {
+    throw new Error("The API returned an invalid run event page.");
+  }
+  return data;
+}
 
 export class ApiError extends Error {
   constructor(

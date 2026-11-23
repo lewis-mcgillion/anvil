@@ -1,6 +1,162 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+test("10k-event read-only timeline renders a bounded viewport and seeks", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  let executionCalls = 0;
+  await page.route("**/v1/**", (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() !== "GET") executionCalls++;
+    if (url.pathname.endsWith("/projects")) return route.fulfill({ json: { items: [project], next_cursor: null } });
+    if (url.pathname.endsWith(`/runs/${runId}/events`)) return route.fulfill({ json: {
+      items: Array.from({ length: 10000 }, (_, index) => ({
+        schema_version: "1", event_id: `0199b167-0000-7000-8000-${String(index).padStart(12, "0")}`,
+        run_id: runId, stream_id: project.id, sequence: index, type: "llm.token.chunk",
+        occurred_at: "2026-01-01T12:00:00Z", payload: { text: `Chunk ${index}` },
+      })), next_cursor: null,
+    } });
+    return route.abort();
+  });
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Run ID").fill(runId);
+  await page.getByRole("button", { name: "Inspect run" }).click();
+  await expect(page.getByText("10000 events loaded", { exact: false })).toBeVisible();
+  await expect(page.locator(".event-row")).toHaveCount(24);
+  await page.getByLabel("Show streaming model chunks only").check();
+  await expect(page.locator(".event-row")).toHaveCount(0);
+  await page.getByLabel("Show streaming model chunks only").uncheck();
+  await expect(page.locator(".event-row")).toHaveCount(24);
+  await page.getByLabel("Seek to event").fill("9999");
+  await expect(page.getByText("Chunk 9998")).toBeVisible();
+  expect(executionCalls).toBe(0);
+});
+
+test("event inspector rejects malformed event pages without displaying them", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  await page.route("**/v1/projects?*", (route) => route.fulfill({ json: { items: [project], next_cursor: null } }));
+  await page.route("**/v1/runs/*/events?*", (route) => route.fulfill({ json: {
+    items: [{ event_id: project.id, run_id: project.id, stream_id: project.id,
+      type: "run.started", sequence: 0 }], next_cursor: null,
+  } }));
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Run ID").fill("0199b167-0000-7000-8000-000000000021");
+  await page.getByRole("button", { name: "Inspect run" }).click();
+  await expect(page.getByRole("alert")).toContainText("invalid run event page");
+  await expect(page.locator(".event-row")).toHaveCount(0);
+});
+
+test("event inspector rejects invalid payloads even with matching run IDs", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  await page.route("**/v1/projects?*", (route) => route.fulfill({ json: { items: [project], next_cursor: null } }));
+  await page.route("**/v1/runs/*/events?*", (route) => route.fulfill({ json: {
+    items: [{ schema_version: "1", event_id: project.id, run_id: runId, stream_id: project.id,
+      type: "run.started", sequence: 0, occurred_at: "2026-01-01T12:00:00Z", payload: null }],
+    next_cursor: null,
+  } }));
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Run ID").fill(runId);
+  await page.getByRole("button", { name: "Inspect run" }).click();
+  await expect(page.getByRole("alert")).toContainText("invalid run event page");
+  await expect(page.locator(".event-row")).toHaveCount(0);
+});
+
+test("event pagination rejects a repeated cursor", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  await page.route("**/v1/projects?*", (route) => route.fulfill({ json: { items: [project], next_cursor: null } }));
+  await page.route("**/v1/runs/*/events?*", (route) => route.fulfill({ json: {
+    items: [{ schema_version: "1", event_id: project.id, run_id: runId, stream_id: project.id,
+      type: "run.started", sequence: 0, occurred_at: "2026-01-01T12:00:00Z", payload: {} }],
+    next_cursor: "repeated",
+  } }));
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Run ID").fill(runId);
+  await page.getByRole("button", { name: "Inspect run" }).click();
+  await page.getByRole("button", { name: "Load more events" }).click();
+  await expect(page.getByRole("alert")).toContainText("repeated an event cursor");
+});
+
+test("timeline shows observed causal branches and missing parents", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  const streamB = "0199b167-0000-7000-8000-000000000032";
+  const firstEvent = "0199b167-0000-7000-8000-000000000041";
+  await page.route("**/v1/projects?*", (route) => route.fulfill({ json: { items: [project], next_cursor: null } }));
+  await page.route("**/v1/runs/*/events?*", (route) => route.fulfill({ json: {
+    items: [
+      { schema_version: "1", event_id: firstEvent, run_id: runId, stream_id: project.id,
+        sequence: 0, type: "run.started", occurred_at: "2026-01-01T12:00:00Z", payload: {} },
+      { schema_version: "1", event_id: "0199b167-0000-7000-8000-000000000042", run_id: runId,
+        stream_id: streamB, sequence: 0, type: "model.chunk", occurred_at: "2026-01-01T12:00:01Z",
+        parent_event_ids: [firstEvent, "0199b167-0000-7000-8000-000000000099"], payload: {} },
+    ], next_cursor: null,
+  } }));
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Run ID").fill(runId);
+  await page.getByRole("button", { name: "Inspect run" }).click();
+  await expect(page.getByRole("listitem").filter({ has: page.getByRole("button", { name: `Stream ${streamB}` }) }))
+    .toContainText("1 parent references unavailable");
+  await page.getByRole("button", { name: `Stream ${streamB}`, exact: true }).click();
+  await expect(page.locator(".event-row")).toHaveCount(1);
+  await page.getByLabel("Show streaming model chunks only").check();
+  await expect(page.locator(".event-row")).toHaveCount(1);
+  await page.getByLabel("Show streaming model chunks only").uncheck();
+});
+
+test("event inspector accumulates pages without rendering every row", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  await page.route("**/v1/projects?*", (route) => route.fulfill({ json: { items: [project], next_cursor: null } }));
+  await page.route("**/v1/runs/*/events?*", (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    const start = cursor ? Number(cursor) : 0;
+    return route.fulfill({ json: {
+      items: Array.from({ length: 500 }, (_, offset) => ({
+        schema_version: "1", event_id: `0199b167-0000-7000-8000-${String(start + offset).padStart(12, "0")}`,
+        run_id: runId, stream_id: project.id, sequence: start + offset, type: "llm.token.chunk",
+        occurred_at: "2026-01-01T12:00:00Z", payload: { chunk: start + offset },
+      })), next_cursor: start === 9500 ? null : String(start + 500),
+    } });
+  });
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Run ID").fill(runId);
+  await page.getByRole("button", { name: "Inspect run" }).click();
+  for (let pageIndex = 1; pageIndex < 20; pageIndex++) {
+    await expect(page.getByText(`${pageIndex * 500} events loaded`, { exact: false })).toBeVisible();
+    await page.getByRole("button", { name: "Load more events" }).click();
+  }
+  await expect(page.getByText("10000 events loaded", { exact: false })).toBeVisible();
+  await expect(page.locator(".event-row")).toHaveCount(24);
+  await page.getByLabel("Seek to event").fill("10000");
+  await expect(page.getByText("Event ID:", { exact: false })).toContainText("000000009999");
+});
+
 const first = {
   id: "0199b167-0000-7000-8000-000000000011",
   name: "Alpha",
