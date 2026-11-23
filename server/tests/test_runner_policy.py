@@ -156,3 +156,32 @@ async def test_supervisor_rejects_nonzero_container_exit(tmp_path, monkeypatch):
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_spawn)
     with pytest.raises(IsolationUnavailable, match="125"):
         await supervise_container(safe_launch(), tmp_path, tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_supervisor_cancellation_waits_for_cleanup(tmp_path, monkeypatch):
+    monkeypatch.setattr("anvil_server.runner_policy.container_arguments", lambda *args: ("docker", "run", "image"))
+    started = asyncio.Event()
+    killed = asyncio.Event()
+
+    class RunningProcess:
+        pid = 4242
+        returncode = None
+
+        async def wait(self):
+            started.set()
+            await killed.wait()
+            self.returncode = -9
+            return -9
+
+    async def fake_spawn(*args, **kwargs):
+        return RunningProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_spawn)
+    monkeypatch.setattr("anvil_server.runner_policy.os.killpg", lambda *args: killed.set())
+    task = asyncio.create_task(supervise_container(safe_launch(), tmp_path, tmp_path))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 1)
+    assert killed.is_set()

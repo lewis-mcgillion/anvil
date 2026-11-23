@@ -89,23 +89,36 @@ async def supervise_container(
             except asyncio.TimeoutError as error:
                 raise IsolationUnavailable("Runner execution timed out") from error
         finally:
-            if process.returncode is None:
+            cleanup_task = asyncio.create_task(_reclaim_container(process, container_id_file))
+            while not cleanup_task.done():
                 try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            await asyncio.shield(process.wait())
-            if container_id_file.exists():
-                container_id = container_id_file.read_text().strip()
-                if re.fullmatch(r"[0-9a-f]{64}", container_id):
-                    try:
-                        cleanup = await asyncio.create_subprocess_exec(
-                            "docker", "rm", "--force", container_id,
-                            stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
-                            stderr=asyncio.subprocess.DEVNULL, env={"PATH": os.defpath},
-                        )
-                        await asyncio.shield(cleanup.wait())
-                    except OSError as error:
-                        raise IsolationUnavailable("Runner container cleanup unavailable") from error
-                    if cleanup.returncode != 0:
-                        raise IsolationUnavailable("Runner container cleanup failed")
+                    await asyncio.shield(cleanup_task)
+                except asyncio.CancelledError:
+                    if cleanup_task.done():
+                        break
+            await cleanup_task
+
+
+async def _reclaim_container(process: asyncio.subprocess.Process, container_id_file: Path) -> None:
+    if process.returncode is None:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    await process.wait()
+    if not container_id_file.exists():
+        return
+    container_id = container_id_file.read_text().strip()
+    if not re.fullmatch(r"[0-9a-f]{64}", container_id):
+        raise IsolationUnavailable("Runner container ID is invalid; cleanup cannot be verified")
+    try:
+        cleanup = await asyncio.create_subprocess_exec(
+            "docker", "rm", "--force", container_id,
+            stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL, env={"PATH": os.defpath},
+        )
+        await cleanup.wait()
+    except OSError as error:
+        raise IsolationUnavailable("Runner container cleanup unavailable") from error
+    if cleanup.returncode != 0:
+        raise IsolationUnavailable("Runner container cleanup failed")
