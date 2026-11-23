@@ -50,6 +50,26 @@ test("event inspector rejects malformed event pages without displaying them", as
   await expect(page.locator(".event-row")).toHaveCount(0);
 });
 
+test("event inspector rejects invalid payloads even with matching run IDs", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  await page.route("**/v1/projects?*", (route) => route.fulfill({ json: { items: [project], next_cursor: null } }));
+  await page.route("**/v1/runs/*/events?*", (route) => route.fulfill({ json: {
+    items: [{ schema_version: "1", event_id: project.id, run_id: runId, stream_id: project.id,
+      type: "run.started", sequence: 0, occurred_at: "2026-01-01T12:00:00Z", payload: null }],
+    next_cursor: null,
+  } }));
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Run ID").fill(runId);
+  await page.getByRole("button", { name: "Inspect run" }).click();
+  await expect(page.getByRole("alert")).toContainText("invalid run event page");
+  await expect(page.locator(".event-row")).toHaveCount(0);
+});
+
 test("event pagination rejects a repeated cursor", async ({ page }) => {
   const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
     retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
