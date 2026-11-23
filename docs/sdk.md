@@ -171,3 +171,13 @@ ingestion matching those contracts before deployment.
 An opt-in durable crash spool, OTEL semantic mapping/import, release
 publication and a CI Python-version matrix are **not implemented** here.
 There is no disk queue or crash-recovery guarantee.
+
+### OpenTelemetry correlation
+
+`anvil.otel.map_span(span)` maps a dictionary exported from OpenTelemetry to
+trace, span and parent-span identifiers and common `gen_ai.*` attributes.
+The mapping does not attach to, replace or modify any installed tracer or
+exporter. It validates lowercase hexadecimal identities and deliberately
+marks plain OTEL records `replay_safe: false` and `replay_eligibility:
+ineligible`: traces alone cannot supply deterministic model/tool fixtures.
+Invalid span identities raise `ValueError`; no resources are allocated.
