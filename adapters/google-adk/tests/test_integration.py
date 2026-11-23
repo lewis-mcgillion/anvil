@@ -187,6 +187,26 @@ async def test_replay_miss_propagates_without_fallback(failure):
         await execute(agent)
 
 
+async def test_replay_missing_fixture_cannot_run_original_fatal_tool(tmp_path):
+    marker = tmp_path / "unexpected-production-call"
+
+    class Reject(FixtureResolver):
+        async def tool(self, *args):
+            raise Ineligible("missing recorded tool response")
+
+    def lookup(sku: str) -> dict:
+        marker.write_text("called")
+        raise AssertionError("production tool executed")
+
+    resolver = Reject()
+    agent = LlmAgent(name="sample", model=ReplayModel(model="offline", resolver=resolver), tools=[
+        ReplayTool(declaration={"name": lookup.__name__}, resolver=resolver),
+    ])
+    with pytest.raises(Ineligible, match="missing recorded tool response"):
+        await execute(agent)
+    assert not marker.exists()
+
+
 async def test_parallel_nested_agents_have_distinct_causal_branches():
     def lookup(sku: str) -> dict:
         return {"available": True}
