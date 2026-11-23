@@ -46,3 +46,35 @@ async def test_suite_case_exception_is_not_a_pass():
         raise RuntimeError("runner unavailable")
 
     assert await execute_suite_cases(["case"], execute) == {"case": "error"}
+
+
+@pytest.mark.asyncio
+async def test_suite_retries_errors_but_not_explicit_failures():
+    attempts = {"transient": 0, "failed": 0}
+
+    async def execute(case_id):
+        attempts[case_id] += 1
+        if case_id == "transient" and attempts[case_id] == 1:
+            raise RuntimeError("temporary")
+        return "fail" if case_id == "failed" else "pass"
+
+    result = await execute_suite_cases(["transient", "failed"], execute, max_attempts=2)
+    assert result == {"transient": "pass", "failed": "fail"}
+    assert attempts == {"transient": 2, "failed": 1}
+
+
+@pytest.mark.asyncio
+async def test_suite_timeout_records_error_and_cleans_up():
+    import asyncio
+
+    cleaned = asyncio.Event()
+
+    async def execute(case_id):
+        try:
+            await asyncio.Future()
+        finally:
+            cleaned.set()
+
+    result = await execute_suite_cases(["stalled"], execute, timeout_seconds=0.001)
+    assert result == {"stalled": "error"}
+    assert cleaned.is_set()
