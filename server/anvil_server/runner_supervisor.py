@@ -2,9 +2,11 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 from .runner_pb2 import RunnerMessage, SupervisorMessage, RUN_OUTCOME_UNSPECIFIED
 from .runner_policy import IsolationUnavailable
+from .runner_policy import RunnerLaunch, supervise_container
 from .runner_fixtures import RecordedRunnerFixtures
 
 
@@ -135,3 +137,68 @@ async def run_recorded_protocol(reader: asyncio.StreamReader, writer: asyncio.St
             )
     finally:
         fixtures.fixtures.close()
+
+
+async def run_isolated_recorded_session(
+    launch: RunnerLaunch, socket_directory: Path, seccomp_profile: Path,
+    *, adapter: str, config: SupervisorMessage, fixtures: RecordedRunnerFixtures,
+    persist_events: Callable[[object], Awaitable[None]], timeout_seconds: float = 60,
+) -> int:
+    socket_path = socket_directory / "supervisor.sock"
+    if socket_path.exists() or socket_path.is_symlink():
+        raise IsolationUnavailable("Runner supervisor socket path already exists")
+    session_result = asyncio.get_running_loop().create_future()
+    accepted = False
+
+    async def accept(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        nonlocal accepted
+        if accepted:
+            writer.close()
+            await writer.wait_closed()
+            return
+        accepted = True
+        try:
+            result = await run_recorded_protocol(
+                reader, writer, adapter=adapter, config=config, fixtures=fixtures,
+                persist_events=persist_events, timeout_seconds=timeout_seconds,
+            )
+            if not session_result.done():
+                session_result.set_result(result)
+        except BaseException as error:
+            if not session_result.done():
+                session_result.set_exception(error)
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    server = await asyncio.start_unix_server(accept, path=str(socket_path))
+    container_task = None
+    try:
+        async with server:
+            container_task = asyncio.create_task(supervise_container(
+                launch, socket_directory, seccomp_profile, timeout_seconds=timeout_seconds,
+            ))
+            done, _ = await asyncio.wait({container_task, session_result},
+                                         return_when=asyncio.FIRST_COMPLETED,
+                                         timeout=timeout_seconds)
+            if not done:
+                raise IsolationUnavailable("Runner session timed out")
+            if container_task in done:
+                await container_task
+                if not session_result.done():
+                    raise IsolationUnavailable("Runner exited without supervisor completion")
+            outcome = await session_result
+            if outcome != 1:
+                raise IsolationUnavailable("Runner reported unsuccessful outcome")
+            await container_task
+            return outcome
+    finally:
+        if container_task is not None and not container_task.done():
+            container_task.cancel()
+            try:
+                await container_task
+            except asyncio.CancelledError:
+                pass
+        if session_result.done() and not session_result.cancelled():
+            session_result.exception() if session_result.exception() is not None else None
+        socket_path.unlink(missing_ok=True)

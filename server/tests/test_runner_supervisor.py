@@ -4,7 +4,7 @@ import pytest
 
 from anvil_server.runner_pb2 import RunnerMessage, SupervisorMessage
 from anvil_server.runner_policy import IsolationUnavailable
-from anvil_server.runner_supervisor import handshake, read_runner_message, receive_terminal_outcome, supervise_recorded_messages, run_recorded_protocol
+from anvil_server.runner_supervisor import handshake, read_runner_message, receive_terminal_outcome, supervise_recorded_messages, run_recorded_protocol, run_isolated_recorded_session
 from anvil_server.runner_fixtures import RecordedRunnerFixtures
 from anvil_server.replay.fixtures import FixtureSession
 
@@ -250,3 +250,22 @@ async def test_recorded_protocol_handshake_through_terminal_completion():
                                        fixtures=RecordedRunnerFixtures(FixtureSession([])),
                                        persist_events=persist) == 1
     assert outgoing == [framed(config), framed(SupervisorMessage(finished={}))]
+
+
+@pytest.mark.asyncio
+async def test_isolated_runner_exit_before_handshake_fails_closed(tmp_path, monkeypatch):
+    async def exited(*args, **kwargs):
+        return 0
+
+    monkeypatch.setattr("anvil_server.runner_supervisor.supervise_container", exited)
+    config = SupervisorMessage(config={"run_id": "run", "attempt_id": "attempt"})
+
+    async def persist(batch):
+        pass
+
+    with pytest.raises(IsolationUnavailable, match="without supervisor completion"):
+        await run_isolated_recorded_session(None, tmp_path, tmp_path / "seccomp.json",
+                                            adapter="google-adk", config=config,
+                                            fixtures=RecordedRunnerFixtures(FixtureSession([])),
+                                            persist_events=persist, timeout_seconds=1)
+    assert not (tmp_path / "supervisor.sock").exists()
