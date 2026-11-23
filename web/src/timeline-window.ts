@@ -8,7 +8,8 @@ export function timelineWindow(total: number, scrollTop: number, rowHeight: numb
     throw new Error("Invalid timeline viewport");
   }
   const visible = Math.ceil(viewportHeight / rowHeight);
-  const start = Math.max(0, Math.min(total, Math.floor(scrollTop / rowHeight)) - overscan);
-  const end = Math.min(total, start + visible + 2 * overscan);
+  const size = Math.min(total, visible + 2 * overscan);
+  const start = Math.max(0, Math.min(total - size, Math.floor(scrollTop / rowHeight) - overscan));
+  const end = start + size;
   return { start, end, paddingTop: start * rowHeight, paddingBottom: (total - end) * rowHeight };
 }

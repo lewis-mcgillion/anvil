@@ -21,3 +21,10 @@ test('invalid scroll and geometry fail explicitly', () => {
   assert.throws(() => windowFor(10000, -1, 25, 500));
   assert.throws(() => windowFor(10000, 1, 0, 500));
 });
+
+test('last event stays visible at the bottom of a long timeline', () => {
+  const result = windowFor(10000, 9999 * 56, 56, 420);
+  assert.equal(result.end, 10000);
+  assert.ok(result.start <= 9999);
+  assert.equal(result.paddingTop + result.paddingBottom + (result.end - result.start) * 56, 560000);
+});

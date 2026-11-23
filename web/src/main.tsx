@@ -51,9 +51,19 @@ function EventInspector({ client, projectId, runId }: { client: ReturnType<typeo
   const [loading, setLoading] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [selected, setSelected] = useState<string>();
+  const [streamFilter, setStreamFilter] = useState("");
   const viewport = useRef<HTMLDivElement>(null);
   const rowHeight = 56;
-  const windowed = timelineWindow(events.length, scrollTop, rowHeight, 420);
+  const streams = [...new Set(events.map((event) => event.stream_id))];
+  const filtered = streamFilter ? events.filter((event) => event.stream_id === streamFilter) : events;
+  const windowed = timelineWindow(filtered.length, scrollTop, rowHeight, 420);
+  const seekTo = (eventId: string) => {
+    const position = filtered.findIndex((event) => event.event_id === eventId);
+    if (position < 0) return;
+    viewport.current?.scrollTo({ top: position * rowHeight });
+    setScrollTop(position * rowHeight);
+    setSelected(eventId);
+  };
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -71,20 +81,20 @@ function EventInspector({ client, projectId, runId }: { client: ReturnType<typeo
   const active = events.find((event) => event.event_id === selected);
   return <section aria-label="Read-only event inspector">
     <p>Events are read-only. Playback and seeking never execute agents, models or tools.</p>
-    <label>Seek to event <input type="number" min={1} max={events.length} placeholder="Event number"
+    <label>Stream <select value={streamFilter} onChange={(event) => {
+      setStreamFilter(event.target.value); setScrollTop(0); viewport.current?.scrollTo({ top: 0 });
+    }}><option value="">All streams</option>{streams.map((stream) =>
+      <option key={stream} value={stream}>{stream}</option>)}</select></label>
+    <label>Seek to event <input type="number" min={1} max={filtered.length} placeholder="Event number"
       onChange={(event) => {
         const position = Number(event.target.value) - 1;
-        if (Number.isInteger(position) && position >= 0 && position < events.length) {
-          viewport.current?.scrollTo({ top: position * rowHeight });
-          setScrollTop(position * rowHeight);
-          setSelected(events[position].event_id);
-        }
+        if (Number.isInteger(position) && position >= 0 && position < filtered.length) seekTo(filtered[position].event_id);
       }} /></label>
     {error && <p role="alert">{error}</p>}
     {loading && <p role="status">Loading events...</p>}
     <div ref={viewport} className="event-viewport" onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
       <div style={{ height: windowed.paddingTop }} />
-      {events.slice(windowed.start, windowed.end).map((event) => <button key={event.event_id}
+      {filtered.slice(windowed.start, windowed.end).map((event) => <button key={event.event_id}
         className="event-row" style={{ height: rowHeight }} onClick={() => setSelected(event.event_id)}>
         <span>{event.sequence}: {event.type}</span> <small>Stream {event.stream_id}</small>
       </button>)}
@@ -93,7 +103,9 @@ function EventInspector({ client, projectId, runId }: { client: ReturnType<typeo
     <p>{events.length} events loaded{nextCursor ? "; more available" : ""}.</p>
     {nextCursor && <button disabled={loading} onClick={() => setCursor(nextCursor)}>Load more events</button>}
     {active && <section><h3>Event payload</h3><p>Event ID: <code>{active.event_id}</code></p>
-      <p>Parent events: {active.parent_event_ids?.join(", ") || "None"}</p>
+      <p>Parent events: {active.parent_event_ids?.length ? active.parent_event_ids.map((parent) =>
+        <button key={parent} disabled={!filtered.some((event) => event.event_id === parent)}
+          onClick={() => seekTo(parent)}>{parent}</button>) : "None"}</p>
       <pre>{JSON.stringify(active.payload, null, 2)}</pre></section>}
   </section>;
 }
