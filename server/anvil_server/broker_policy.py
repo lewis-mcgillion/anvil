@@ -177,15 +177,16 @@ async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, a
             response = json.loads(content)
             if not isinstance(response, dict):
                 raise BrokerDenied("Model provider response must be an object")
-            usage = response.get("usage", {})
-            if not isinstance(usage, dict):
+            usage = response.get("usage")
+            if not isinstance(usage, dict) or any(
+                type(usage.get(key)) is not int or usage[key] < 0
+                for key in ("input_tokens", "output_tokens", "cost_micro_usd")
+            ):
                 raise BrokerDenied("Model provider usage is invalid")
-            actual_input_tokens = usage.get("input_tokens", 0)
-            if type(actual_input_tokens) is not int or actual_input_tokens < 0:
-                raise BrokerDenied("Model provider usage is invalid")
+            actual_input_tokens = usage["input_tokens"]
             ledger.charge(input_tokens=max(0, actual_input_tokens - estimated_input_tokens),
-                          output_tokens=usage.get("output_tokens", 0),
-                          micro_usd=usage.get("cost_micro_usd", 0))
+                          output_tokens=usage["output_tokens"],
+                          micro_usd=usage["cost_micro_usd"])
             return response
     except BrokerDenied:
         raise
