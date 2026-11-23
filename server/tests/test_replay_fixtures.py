@@ -168,6 +168,16 @@ def test_changed_model_requests_fail_exactly(field, value):
     assert_code("FIXTURE_MISMATCH", lambda: resolve(FixtureSession([fixture]), fixture, request=request))
 
 
+def test_changed_prompt_cannot_consume_or_fallback_to_recorded_model():
+    fixture = model()
+    request = model_request()
+    request["messages"][0]["content"] = "different prompt"
+    session = FixtureSession([fixture])
+    assert_code("FIXTURE_MISMATCH", lambda: resolve(session, fixture, request=request))
+    assert_code("SESSION_ABORTED", lambda: resolve(session, fixture))
+    assert_code("SESSION_ABORTED", session.finish)
+
+
 def test_captured_model_stream_and_failure_are_returned_without_interpretation():
     chunks = {"status": "stream", "chunks": [
         {"chunk_index": 0, "chunk": "hel"}, {"chunk_index": 1, "chunk": {"text": "lo"}},
