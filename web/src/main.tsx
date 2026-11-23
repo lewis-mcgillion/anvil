@@ -45,6 +45,12 @@ function Page({ title, children }: React.PropsWithChildren<{ title: string }>) {
 
 function ProjectOverview({ projects, client, token }: { projects: Project[]; client: ReturnType<typeof dashboardClient>; token: string }) {
   const { projectId } = useParams();
+  return <ProjectOverviewContent key={projectId} projectId={projectId} projects={projects} client={client} token={token} />;
+}
+
+function ProjectOverviewContent({ projectId, projects, client, token }: {
+  projectId?: string; projects: Project[]; client: ReturnType<typeof dashboardClient>; token: string;
+}) {
   const project = projects.find((item) => item.id === projectId);
   const [runs, setRuns] = useState<Run[]>([]);
   const [cursor, setCursor] = useState<string>();

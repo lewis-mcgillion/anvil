@@ -48,6 +48,27 @@ test("project runs filter by agent identity and capture state", async ({ page })
   await expect(page.getByText("Billing", { exact: true })).toBeVisible();
 });
 
+test("switching projects discards prior run and recording state", async ({ page }) => {
+  await projects(page);
+  await page.route("**/v1/runs?*", (route) => {
+    const projectId = new URL(route.request().url()).searchParams.get("project_id");
+    return route.fulfill({ json: { items: [{
+      id: projectId === first.id ? "0199b167-0000-7000-8000-000000000021" : "0199b167-0000-7000-8000-000000000022",
+      project_id: projectId, agent_name: projectId === first.id ? "Inventory" : "Billing",
+      capture_state: "open", execution_state: "running",
+    }], next_cursor: null } });
+  });
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await expect(page.getByText("Inventory", { exact: true })).toBeVisible();
+  await page.getByLabel("Filter runs by agent or ID").fill("inventory");
+  await page.getByLabel("Project", { exact: true }).selectOption(second.id);
+  await expect(page.getByText("Billing", { exact: true })).toBeVisible();
+  await expect(page.getByText("Inventory", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Filter runs by agent or ID")).toHaveValue("");
+});
+
 test("recording eligibility is obtained only from a scoped manifest lookup", async ({ page }) => {
   await projects(page, [first]);
   const runId = "0199b167-0000-7000-8000-000000000021";
