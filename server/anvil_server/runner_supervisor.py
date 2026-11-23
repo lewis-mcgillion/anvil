@@ -13,6 +13,10 @@ from .runner_fixtures import RecordedRunnerFixtures
 MAX_WIRE_BYTES = 65_536
 
 
+def _sandbox_owned(path: Path) -> bool:
+    return path.stat().st_uid == 65534
+
+
 async def read_runner_message(reader: asyncio.StreamReader) -> RunnerMessage:
     try:
         header = await reader.readexactly(4)
@@ -145,6 +149,10 @@ async def run_isolated_recorded_session(
     persist_events: Callable[[object], Awaitable[None]], timeout_seconds: float = 60,
 ) -> int:
     socket_path = socket_directory / "supervisor.sock"
+    if socket_directory.is_symlink() or not socket_directory.is_dir():
+        raise IsolationUnavailable("Runner socket directory is invalid")
+    if not _sandbox_owned(socket_directory):
+        raise IsolationUnavailable("Runner socket directory must belong to sandbox identity")
     if socket_path.exists() or socket_path.is_symlink():
         raise IsolationUnavailable("Runner supervisor socket path already exists")
     session_result = asyncio.get_running_loop().create_future()
@@ -176,6 +184,15 @@ async def run_isolated_recorded_session(
             connection_tasks.discard(asyncio.current_task())
 
     server = await asyncio.start_unix_server(accept, path=str(socket_path))
+    try:
+        socket_path.chmod(0o600)
+        if not _sandbox_owned(socket_path):
+            raise IsolationUnavailable("Runner socket must belong to sandbox identity")
+    except BaseException:
+        server.close()
+        await server.wait_closed()
+        socket_path.unlink(missing_ok=True)
+        raise
     container_task = None
     try:
         async with server:
