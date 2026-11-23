@@ -50,6 +50,7 @@ class BudgetLedger:
         self.micro_usd = 0
         self.cancelled = False
         self._dispatch_lock = asyncio.Lock()
+        self._active_task: asyncio.Task | None = None
 
     def charge(self, *, model_calls: int = 0, tool_calls: int = 0,
                input_tokens: int = 0, output_tokens: int = 0, micro_usd: int = 0) -> None:
@@ -72,17 +73,25 @@ class BudgetLedger:
 
     def cancel(self) -> None:
         self.cancelled = True
+        if self._active_task is not None and not self._active_task.done():
+            self._active_task.cancel()
 
 
 async def dispatch_live_model(*, endpoint: str, profile_endpoint: str, approved: bool,
                               credential: str, payload: dict, ledger: BudgetLedger,
                               max_response_bytes: int = 1_048_576) -> dict:
     async with ledger._dispatch_lock:
-        return await _dispatch_live_model_locked(
-            endpoint=endpoint, profile_endpoint=profile_endpoint, approved=approved,
-            credential=credential, payload=payload, ledger=ledger,
-            max_response_bytes=max_response_bytes,
-        )
+        if ledger.cancelled:
+            raise BrokerDenied("Broker run cancelled")
+        ledger._active_task = asyncio.current_task()
+        try:
+            return await _dispatch_live_model_locked(
+                endpoint=endpoint, profile_endpoint=profile_endpoint, approved=approved,
+                credential=credential, payload=payload, ledger=ledger,
+                max_response_bytes=max_response_bytes,
+            )
+        finally:
+            ledger._active_task = None
 
 
 async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, approved: bool,

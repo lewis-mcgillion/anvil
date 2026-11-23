@@ -292,3 +292,29 @@ async def test_live_broker_concurrent_requests_cannot_bypass_call_budget(monkeyp
     assert sum(isinstance(result, dict) for result in results) == 1
     assert sum(isinstance(result, BrokerDenied) for result in results) == 1
     assert ledger.model_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_live_broker_cancellation_aborts_active_resolution(monkeypatch):
+    import asyncio
+
+    started = asyncio.Event()
+
+    async def hanging_resolution(endpoint):
+        started.set()
+        await asyncio.Future()
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint", hanging_resolution)
+    endpoint = "https://models.example.com/v1/responses"
+    ledger = BudgetLedger(LiveBudget())
+    task = asyncio.create_task(dispatch_live_model(
+        endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+        credential="operator-secret", payload={}, ledger=ledger,
+    ))
+    await started.wait()
+    ledger.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 1)
+    with pytest.raises(BrokerDenied, match="cancelled"):
+        await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+                                  credential="operator-secret", payload={}, ledger=ledger)
