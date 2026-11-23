@@ -86,3 +86,22 @@ async def test_recorded_agent_crash_is_not_a_successful_replay():
         await execute_recorded_session(session, agent)
     with pytest.raises(ReplayError):
         session.finish()
+
+
+@pytest.mark.asyncio
+async def test_recorded_agent_consumes_model_fixture_without_provider():
+    request = {"model": "recorded", "messages": [{"role": "user", "content": "hello"}],
+               "tools": [], "system_instruction": "", "generation": {}}
+    fixture = Fixture.create(kind="model", path=("root",), ordinal=0,
+                             request=request, response={"status": "completed", "response": "hello",
+                                                        "input_tokens": 2, "output_tokens": 1})
+    session = FixtureSession([fixture])
+
+    async def agent(fixtures):
+        response = fixtures.resolve(request_id="model-call", kind="model", path=("root",),
+                                    ordinal=0, request=request)
+        assert response["response"] == "hello"
+
+    evidence = await execute_recorded_session(session, agent)
+    assert evidence["provider_calls"] == 0
+    assert evidence["consumed"] == 1
