@@ -187,3 +187,19 @@ async def test_live_broker_rejects_ambiguous_response_framing(monkeypatch, extra
     with pytest.raises(BrokerDenied, match="encoding|content length"):
         await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
                                   credential="operator-secret", payload={}, ledger=BudgetLedger(LiveBudget()))
+
+
+@pytest.mark.asyncio
+async def test_live_broker_dns_delay_cannot_bypass_wall_budget(monkeypatch):
+    import asyncio
+
+    async def delayed_resolution(endpoint):
+        await asyncio.sleep(2)
+        return ("8.8.8.8",)
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint", delayed_resolution)
+    endpoint = "https://models.example.com/v1/responses"
+    ledger = BudgetLedger(LiveBudget(wall_seconds=1))
+    with pytest.raises(BrokerDenied, match="transport failed"):
+        await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+                                  credential="operator-secret", payload={}, ledger=ledger)

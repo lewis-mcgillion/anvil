@@ -84,43 +84,44 @@ async def dispatch_live_model(*, endpoint: str, profile_endpoint: str, approved:
         raise BrokerDenied("Model request exceeds broker size limit")
     ledger.charge(model_calls=1)
     hostname = urlsplit(endpoint).hostname
-    addresses = await resolve_public_endpoint(endpoint)
     reader = writer = None
     try:
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(addresses[0], 443, ssl=ssl.create_default_context(),
-                                    server_hostname=hostname), timeout=10,
-        )
-        path = urlsplit(endpoint).path
-        headers = (f"POST {path} HTTP/1.1\r\nHost: {hostname}\r\n"
-                   f"Authorization: Bearer {credential}\r\nContent-Type: application/json\r\n"
-                   f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n")
-        writer.write(headers.encode("ascii") + body)
-        await asyncio.wait_for(writer.drain(), timeout=10)
-        head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=ledger.budget.wall_seconds)
-        if len(head) > 8192 or not head.startswith((b"HTTP/1.1 200 ", b"HTTP/1.0 200 ")):
-            raise BrokerDenied("Model provider rejected request or attempted redirect")
-        headers = head.decode("ascii").lower().split("\r\n")
-        if any(line.startswith(("transfer-encoding:", "content-encoding:")) for line in headers[1:]):
-            raise BrokerDenied("Model provider response uses unsupported encoding")
-        if any(line.startswith((" ", "\t")) or (line and ":" not in line) for line in headers[1:]):
-            raise BrokerDenied("Model provider response has malformed headers")
-        lengths = [line.split(":", 1)[1].strip() for line in headers[1:] if line.startswith("content-length:")]
-        if len(lengths) != 1 or not lengths[0].isdigit():
-            raise BrokerDenied("Model provider response requires a single content length")
-        content_length = int(lengths[0])
-        if content_length > max_response_bytes:
-            raise BrokerDenied("Model provider response exceeds broker size limit")
-        content = await asyncio.wait_for(reader.readexactly(content_length), timeout=ledger.budget.wall_seconds)
-        response = json.loads(content)
-        if not isinstance(response, dict):
-            raise BrokerDenied("Model provider response must be an object")
-        usage = response.get("usage", {})
-        if not isinstance(usage, dict):
-            raise BrokerDenied("Model provider usage is invalid")
-        ledger.charge(input_tokens=usage.get("input_tokens", 0),
-                      output_tokens=usage.get("output_tokens", 0))
-        return response
+        async with asyncio.timeout_at(ledger.started + ledger.budget.wall_seconds):
+            addresses = await resolve_public_endpoint(endpoint)
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(addresses[0], 443, ssl=ssl.create_default_context(),
+                                        server_hostname=hostname), timeout=10,
+            )
+            path = urlsplit(endpoint).path
+            headers = (f"POST {path} HTTP/1.1\r\nHost: {hostname}\r\n"
+                       f"Authorization: Bearer {credential}\r\nContent-Type: application/json\r\n"
+                       f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n")
+            writer.write(headers.encode("ascii") + body)
+            await asyncio.wait_for(writer.drain(), timeout=10)
+            head = await reader.readuntil(b"\r\n\r\n")
+            if len(head) > 8192 or not head.startswith((b"HTTP/1.1 200 ", b"HTTP/1.0 200 ")):
+                raise BrokerDenied("Model provider rejected request or attempted redirect")
+            headers = head.decode("ascii").lower().split("\r\n")
+            if any(line.startswith(("transfer-encoding:", "content-encoding:")) for line in headers[1:]):
+                raise BrokerDenied("Model provider response uses unsupported encoding")
+            if any(line.startswith((" ", "\t")) or (line and ":" not in line) for line in headers[1:]):
+                raise BrokerDenied("Model provider response has malformed headers")
+            lengths = [line.split(":", 1)[1].strip() for line in headers[1:] if line.startswith("content-length:")]
+            if len(lengths) != 1 or not lengths[0].isdigit():
+                raise BrokerDenied("Model provider response requires a single content length")
+            content_length = int(lengths[0])
+            if content_length > max_response_bytes:
+                raise BrokerDenied("Model provider response exceeds broker size limit")
+            content = await reader.readexactly(content_length)
+            response = json.loads(content)
+            if not isinstance(response, dict):
+                raise BrokerDenied("Model provider response must be an object")
+            usage = response.get("usage", {})
+            if not isinstance(usage, dict):
+                raise BrokerDenied("Model provider usage is invalid")
+            ledger.charge(input_tokens=usage.get("input_tokens", 0),
+                          output_tokens=usage.get("output_tokens", 0))
+            return response
     except BrokerDenied:
         raise
     except (OSError, asyncio.TimeoutError, ssl.SSLError, UnicodeError, ValueError, asyncio.IncompleteReadError, asyncio.LimitOverrunError) as error:
