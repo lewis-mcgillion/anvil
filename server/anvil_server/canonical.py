@@ -21,6 +21,7 @@ up and no cancellation semantics; callers own any surrounding timeouts.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
@@ -29,6 +30,7 @@ __all__ = [
     "canonicalize",
     "canonical_bytes",
     "canonical_hash",
+    "NormalizationEvidence",
     "NormalizationPolicy",
 ]
 
@@ -185,13 +187,32 @@ def canonical_hash(value: Any) -> str:
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
 
 
+@dataclass(frozen=True)
+class NormalizationEvidence:
+    """What a policy actually did to a document.
+
+    A comparison must be able to state which evidence was dropped before the
+    values were hashed, and which configured ignores had no effect. An ignore
+    that silently matches nothing is how a policy drifts away from the data it
+    was written for, so it is reported rather than discarded.
+    """
+
+    removed: tuple[str, ...] = ()
+    unmatched: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, list[str]]:
+        """Return the serializable form recorded in comparison reports."""
+        return {"removed": list(self.removed), "unmatched": list(self.unmatched)}
+
+
 class NormalizationPolicy:
     """Explicitly configured, versioned comparison normalization.
 
     Only the JSON pointers listed in ``ignore_pointers`` are removed, and every
     removal is recorded so a comparison can report that evidence was dropped.
-    Policies cannot hide fields implicitly: an unknown pointer is a no-op that
-    is still reported, and a pointer may not be the document root.
+    Policies cannot hide fields implicitly: a pointer that matches nothing is
+    reported as unmatched rather than passing silently, and a pointer may not be
+    the document root.
     """
 
     VERSION = "1"
@@ -219,16 +240,24 @@ class NormalizationPolicy:
             "casefold_strings": self.casefold_strings,
         }
 
-    def apply(self, value: Any) -> tuple[Any, list[str]]:
-        """Return the normalized copy of ``value`` and the pointers removed."""
+    def apply(self, value: Any) -> tuple[Any, NormalizationEvidence]:
+        """Return the normalized copy of ``value`` and what the policy did.
+
+        The second element reports both the pointers that were removed and the
+        configured pointers that matched nothing, so a report can never imply
+        that a field was absent when the ignore was simply misdirected.
+        """
         removed: list[str] = []
+        unmatched: list[str] = []
         result = _deep_copy(value)
         for pointer in self.ignore_pointers:
             if _remove_pointer(result, pointer):
                 removed.append(pointer)
+            else:
+                unmatched.append(pointer)
         if self.normalize_whitespace or self.casefold_strings:
             result = self._map_strings(result)
-        return result, removed
+        return result, NormalizationEvidence(tuple(removed), tuple(unmatched))
 
     def _map_strings(self, value: Any) -> Any:
         if isinstance(value, str):

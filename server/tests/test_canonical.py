@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from anvil_server.canonical import (
@@ -118,17 +120,19 @@ def test_repeated_structures_are_not_mistaken_for_cycles():
 class TestNormalizationPolicy:
     def test_default_policy_removes_nothing(self):
         policy = NormalizationPolicy()
-        value, removed = policy.apply({"a": 1})
+        value, evidence = policy.apply({"a": 1})
         assert value == {"a": 1}
-        assert removed == []
+        assert evidence.removed == ()
+        assert evidence.unmatched == ()
 
     def test_ignored_pointers_are_removed_and_reported(self):
         policy = NormalizationPolicy(("/timing/latency_ms", "/trace_id"))
-        value, removed = policy.apply(
+        value, evidence = policy.apply(
             {"timing": {"latency_ms": 12, "kept": 1}, "trace_id": "abc", "output": "x"}
         )
         assert value == {"timing": {"kept": 1}, "output": "x"}
-        assert removed == ["/timing/latency_ms", "/trace_id"]
+        assert evidence.removed == ("/timing/latency_ms", "/trace_id")
+        assert evidence.unmatched == ()
 
     def test_apply_does_not_mutate_the_input(self):
         original = {"trace_id": "abc", "nested": {"keep": [1, 2]}}
@@ -136,11 +140,34 @@ class TestNormalizationPolicy:
         policy.apply(original)
         assert original == {"trace_id": "abc", "nested": {"keep": [1, 2]}}
 
-    def test_absent_pointer_is_not_reported_as_removed(self):
+    def test_absent_pointer_is_reported_as_unmatched_not_removed(self):
+        """A misdirected ignore must not look like a field that was dropped."""
         policy = NormalizationPolicy(("/missing",))
-        value, removed = policy.apply({"a": 1})
+        value, evidence = policy.apply({"a": 1})
         assert value == {"a": 1}
-        assert removed == []
+        assert evidence.removed == ()
+        assert evidence.unmatched == ("/missing",)
+
+    def test_evidence_serializes_for_reports(self):
+        policy = NormalizationPolicy(("/trace_id", "/absent"))
+        _, evidence = policy.apply({"trace_id": "x"})
+        assert evidence.as_dict() == {
+            "removed": ["/trace_id"],
+            "unmatched": ["/absent"],
+        }
+
+    def test_evidence_is_immutable(self):
+        policy = NormalizationPolicy(("/trace_id",))
+        _, evidence = policy.apply({"trace_id": "x"})
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            evidence.removed = ()
+
+    def test_evidence_does_not_change_the_hash(self):
+        """Evidence is for reporting; only policy identity and data hash."""
+        policy = NormalizationPolicy(("/trace_id", "/absent"))
+        assert policy.canonical_hash({"trace_id": "x", "v": 1}) == policy.canonical_hash(
+            {"v": 1}
+        )
 
     def test_hidden_field_removal_is_impossible(self):
         """A field not named by the policy always survives normalization."""
@@ -177,18 +204,18 @@ class TestNormalizationPolicy:
         policy.ignore_pointers = ("/",)
         # "/" addresses the empty-string member, not the root; the root itself
         # is unreachable because every pointer must contain at least one token.
-        value, removed = policy.apply({"": 1, "a": 2})
+        value, evidence = policy.apply({"": 1, "a": 2})
         assert value == {"a": 2}
-        assert removed == ["/"]
+        assert evidence.removed == ("/",)
 
     def test_array_elements_can_be_ignored_by_index(self):
         policy = NormalizationPolicy(("/items/1",))
-        value, removed = policy.apply({"items": [1, 2, 3]})
+        value, evidence = policy.apply({"items": [1, 2, 3]})
         assert value == {"items": [1, 3]}
-        assert removed == ["/items/1"]
+        assert evidence.removed == ("/items/1",)
 
     def test_escaped_pointer_tokens_are_decoded(self):
         policy = NormalizationPolicy(("/a~1b", "/c~0d"))
-        value, removed = policy.apply({"a/b": 1, "c~d": 2, "keep": 3})
+        value, evidence = policy.apply({"a/b": 1, "c~d": 2, "keep": 3})
         assert value == {"keep": 3}
-        assert sorted(removed) == ["/a~1b", "/c~0d"]
+        assert sorted(evidence.removed) == ["/a~1b", "/c~0d"]

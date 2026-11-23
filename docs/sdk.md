@@ -2,7 +2,7 @@
 
 The capture-only SDK ships alongside the frozen validators in the
 `anvil-schema` distribution. Install with `pip install ./sdk/python`, or
-`pip install -e './sdk/python[test]'` for development. Python 3.11 or newer
+`pip install -e './sdk/python[test]'` for development. Python 3.10 or newer
 is required. `anvil` and `anvil_schema` ship PEP 561 type markers. Importing
 the package requires no credentials and starts no threads; constructing a
 client starts one exporter worker.
@@ -140,8 +140,7 @@ server creation: no context activates, but an open server run may remain.
 
 The distribution name/version (`anvil-schema` 1.0.0) and SDK
 `anvil.__version__` (0.1.0) are preserved; the previously unshipped `anvil`
-namespace is now included. The minimum interpreter moves from the original
-validator-only 3.10 declaration to the repository's Python 3.12 baseline.
+namespace is now included. Python 3.10 remains the minimum supported interpreter.
 REST `/v1` and event `schema_version="1"` are unchanged. Other constructor
 schema versions fail explicitly rather than downgrading. Unknown additive
 response fields are ignored; unknown event types/versions fail closed.

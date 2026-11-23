@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from .database import project_connection
+from .policy import enforce
 
 MAX_BATCH_EVENTS = 500
 MAX_BATCH_BYTES = 4 * 1024 * 1024
@@ -68,8 +69,29 @@ def validate_batch(run_id: UUID, stream_id: UUID, events: list[Event]) -> None:
             raise ValueError("Event payload exceeds ingest limit")
 
 
+def apply_policy(events: list[Event]) -> list[Event]:
+    """Return events with the mandatory capture policy applied.
+
+    Every write path goes through here, so no caller can store a payload the
+    policy has not seen. Redaction happens before the content hash, so a
+    recording's identity attests to what was actually stored rather than to
+    bytes the server deliberately discarded.
+    """
+    enforced = []
+    for event in events:
+        payload, redacted = enforce(event.type, event.payload)
+        enforced.append(event.model_copy(update={
+            "payload": payload,
+            # Combined, never granted: replaying a redacted placeholder would
+            # fabricate evidence of an exchange that never happened.
+            "replay_safe": event.replay_safe and not redacted,
+        }))
+    return enforced
+
+
 async def accept_batch(engine: AsyncEngine, project_id: UUID, run_id: UUID,
                        stream_id: UUID, events: list[Event]) -> dict[str, int]:
+    events = apply_policy(events)
     validate_batch(run_id, stream_id, events)
     accepted = duplicates = 0
     async with project_connection(engine, project_id) as connection:

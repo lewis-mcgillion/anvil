@@ -98,3 +98,40 @@ class AdministrationMigrationContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PrivacyDeletionMigrationTests(unittest.TestCase):
+    """0008 narrows immutability for deletion without opening it for edits."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.sql = (Path(__file__).parents[1] / "migrations"
+                   / "0008_privacy_deletion.sql").read_text(encoding="utf-8")
+
+    def test_migration_is_transactional_and_versioned(self):
+        self.assertTrue(self.sql.startswith("-- Copyright"))
+        self.assertIn("BEGIN;", self.sql)
+        self.assertIn("COMMIT;", self.sql)
+        self.assertIn("INSERT INTO schema_migrations (version) VALUES "
+                      "('0008_privacy_deletion')", self.sql)
+
+    def test_only_a_delete_is_ever_allowed(self):
+        self.assertIn("TG_OP = 'DELETE'", self.sql)
+        self.assertNotIn("TG_OP = 'UPDATE'", self.sql)
+
+    def test_the_exception_requires_a_declaration(self):
+        self.assertIn("current_setting('anvil.deletion', true) = 'on'", self.sql)
+
+    def test_the_refusal_is_unchanged_for_everything_else(self):
+        self.assertIn("immutable row cannot be changed in %", self.sql)
+        self.assertIn("ERRCODE = '55000'", self.sql)
+
+    def test_the_triggers_are_not_dropped_or_disabled(self):
+        for escape in ("DROP TRIGGER", "DISABLE TRIGGER", "session_replication_role"):
+            with self.subTest(escape=escape):
+                self.assertNotIn(escape, self.sql)
+
+    def test_the_migration_is_applied_in_ci(self):
+        workflow = (Path(__file__).parents[1] / ".github" / "workflows"
+                    / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("migrations/0008_privacy_deletion.sql", workflow)

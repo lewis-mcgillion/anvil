@@ -1842,6 +1842,8 @@ components:
         - error_difference
         - budget_exceeded
         - capture_gap
+        - changed_model
+        - ambiguous_alignment
     Divergence:
       type: object
       additionalProperties: false

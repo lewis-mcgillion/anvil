@@ -1,5 +1,6 @@
 """Real PostgreSQL assertions activated by ANVIL_TEST_DATABASE_URL."""
 
+import json
 import os
 import base64
 import asyncio
@@ -18,6 +19,9 @@ from anvil_server.jobs import JobQueue, LeaseLost
 from anvil_server.capture import create_run, ingest, seal_run
 from anvil_server.capture import queue_seal
 from anvil_server.worker import process_seal
+from anvil_server.deletion import process_deletion
+from anvil_server.comparisons import (ComparisonError, create_comparison, get_comparison,
+                                      get_report, list_divergences, process_comparison)
 from anvil_server.auth import issue_key, key_hash
 from anvil_server.app import app
 from httpx import ASGITransport, AsyncClient
@@ -725,3 +729,434 @@ async def test_run_creation_idempotency(engine):
     assert await create_run(engine, PROJECT, idempotency_key=key, request_hash="a" * 64) == first
     with pytest.raises(CaptureConflict):
         await create_run(engine, PROJECT, idempotency_key=key, request_hash="b" * 64)
+
+
+def _tool_events(run_id, stream_id, *, arguments):
+    """A minimal run that makes one tool call, for comparison tests."""
+    invocation = new_uuid7()
+    common = {"schema_version": "1", "run_id": run_id, "stream_id": stream_id,
+              "occurred_at": datetime.now(timezone.utc), "replay_safe": True,
+              "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "span_id": "10f067aa0ba902b8"}
+    request_id = new_uuid7()
+    return [
+        Event(**common, event_id=new_uuid7(), sequence=0, type="run.started",
+              payload={"agent": {"name": "demo"}}),
+        Event(**common, event_id=request_id, sequence=1, type="tool.requested",
+              invocation_id=invocation,
+              payload={"tool_name": "inventory.lookup", "arguments": arguments,
+                       "redactions": [], "replay_safe": True}),
+        Event(**common, event_id=new_uuid7(), sequence=2, type="tool.completed",
+              invocation_id=invocation, parent_event_ids=[request_id],
+              payload={"tool_name": "inventory.lookup", "arguments": arguments,
+                       "result": {"stock": 1}, "redactions": [], "replay_safe": True}),
+        Event(**common, event_id=new_uuid7(), sequence=3, type="run.completed",
+              payload={"outcome": "succeeded"}),
+    ]
+
+
+async def _sealed_baseline(engine, arguments):
+    run_id, stream_id = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, run_id, stream_id,
+                 _tool_events(run_id, stream_id, arguments=arguments))
+    recording = await seal_run(engine, PROJECT, run_id)
+    return UUID(recording["recording_id"])
+
+
+@pytest.mark.asyncio
+async def test_a_comparison_detects_changed_arguments_and_pages_its_findings(engine):
+    """ANVIL-046: queue, resolve, read and page a real comparison."""
+    baseline_recording = await _sealed_baseline(engine, {"sku": "ABC"})
+    candidate_run, candidate_stream = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, candidate_run, candidate_stream,
+                 _tool_events(candidate_run, candidate_stream, arguments={"sku": "XYZ"}))
+
+    queued = await create_comparison(engine, PROJECT,
+                                     baseline_recording_id=baseline_recording,
+                                     candidate_run_id=candidate_run)
+    comparison_id, job_id = queued["comparison_id"], queued["job_id"]
+
+    # Before the work runs, the comparison must not read as a pass.
+    pending = await get_comparison(engine, PROJECT, comparison_id)
+    assert pending["deterministic"] == "inconclusive"
+    assert pending["judge"] == "not_run"
+    assert pending["status"] == "queued"
+
+    assert await process_comparison(engine, PROJECT, job_id)
+    resolved = await get_comparison(engine, PROJECT, comparison_id)
+    assert resolved["deterministic"] == "fail"
+    assert resolved["infrastructure"] == "ok"
+    assert resolved["status"] == "succeeded"
+
+    page, cursor = await list_divergences(engine, PROJECT, comparison_id, limit=1)
+    assert [row["category"] for row in page] == ["changed_tool_args"]
+    assert page[0]["evidence_event_ids"]
+    # The summary locates the finding without republishing recorded values.
+    assert "XYZ" not in page[0]["summary"] and "ABC" not in page[0]["summary"]
+
+    report = await get_report(engine, PROJECT, comparison_id)
+    assert report["report_version"] and report["outcome"]["outcome"] != "pass"
+
+
+@pytest.mark.asyncio
+async def test_an_identical_candidate_passes_and_has_no_findings(engine):
+    baseline_recording = await _sealed_baseline(engine, {"sku": "ABC"})
+    candidate_run, candidate_stream = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, candidate_run, candidate_stream,
+                 _tool_events(candidate_run, candidate_stream, arguments={"sku": "ABC"}))
+    queued = await create_comparison(engine, PROJECT,
+                                     baseline_recording_id=baseline_recording,
+                                     candidate_run_id=candidate_run)
+    assert await process_comparison(engine, PROJECT, queued["job_id"])
+    resolved = await get_comparison(engine, PROJECT, queued["comparison_id"])
+    assert resolved["deterministic"] == "pass"
+    page, cursor = await list_divergences(engine, PROJECT, queued["comparison_id"])
+    # No findings is an empty page, not a missing resource.
+    assert page == [] and cursor is None
+
+
+@pytest.mark.asyncio
+async def test_comparison_inputs_are_validated_before_a_job_exists(engine):
+    baseline_recording = await _sealed_baseline(engine, {"sku": "ABC"})
+    before = await _job_count(engine)
+    with pytest.raises(ComparisonError):
+        await create_comparison(engine, PROJECT,
+                                baseline_recording_id=baseline_recording,
+                                candidate_run_id=new_uuid7())
+    with pytest.raises(ComparisonError):
+        await create_comparison(engine, PROJECT, baseline_recording_id=new_uuid7(),
+                                candidate_run_id=(await create_run(engine, PROJECT))[0])
+    assert await _job_count(engine) == before
+
+
+@pytest.mark.asyncio
+async def test_a_comparison_is_invisible_to_another_project(engine):
+    baseline_recording = await _sealed_baseline(engine, {"sku": "ABC"})
+    candidate_run, candidate_stream = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, candidate_run, candidate_stream,
+                 _tool_events(candidate_run, candidate_stream, arguments={"sku": "ABC"}))
+    queued = await create_comparison(engine, PROJECT,
+                                     baseline_recording_id=baseline_recording,
+                                     candidate_run_id=candidate_run)
+    other = UUID("0199b167-0000-7000-8000-000000000012")
+    assert await get_comparison(engine, other, queued["comparison_id"]) is None
+    assert await list_divergences(engine, other, queued["comparison_id"]) is None
+
+
+@pytest.mark.asyncio
+async def test_a_second_worker_cannot_resolve_an_already_finished_comparison(engine):
+    baseline_recording = await _sealed_baseline(engine, {"sku": "ABC"})
+    candidate_run, candidate_stream = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, candidate_run, candidate_stream,
+                 _tool_events(candidate_run, candidate_stream, arguments={"sku": "ABC"}))
+    queued = await create_comparison(engine, PROJECT,
+                                     baseline_recording_id=baseline_recording,
+                                     candidate_run_id=candidate_run)
+    assert await process_comparison(engine, PROJECT, queued["job_id"])
+    assert not await process_comparison(engine, PROJECT, queued["job_id"])
+
+
+async def _job_count(engine):
+    async with project_connection(engine, PROJECT) as connection:
+        return (await connection.execute(text(
+            "SELECT count(*) FROM jobs WHERE project_id = :project AND kind = 'comparison'"
+        ), {"project": PROJECT})).scalar_one()
+
+
+CANARY = "sk-canary0123456789abcdefghij"
+
+
+@pytest.mark.asyncio
+async def test_a_credential_never_reaches_stored_event_rows(engine):
+    """ANVIL-067: the policy is applied on the write path, not on read."""
+    run_id, stream_id = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, run_id, stream_id,
+                 _tool_events(run_id, stream_id,
+                              arguments={"api_key": CANARY, "sku": "ABC"}))
+    async with project_connection(engine, PROJECT) as connection:
+        rows = (await connection.execute(text("""
+            SELECT payload::text, replay_safe FROM events
+            WHERE project_id = :project AND run_id = :run ORDER BY sequence
+        """), {"project": PROJECT, "run": run_id})).all()
+    assert rows, "the run stored no events"
+    for payload, replay_safe in rows:
+        assert CANARY not in payload
+        if "tool_name" in payload:
+            # A redacted exchange cannot be replayed: sending the placeholder
+            # would fabricate evidence of a call that never happened.
+            assert replay_safe is False
+
+
+@pytest.mark.asyncio
+async def test_an_exported_archive_carries_no_credential(engine):
+    """A credential must not survive into anything handed to a third party."""
+    from anvil_server.bundles import import_bundle
+
+    recording_id = await _sealed_baseline(engine, {"api_key": CANARY, "sku": "ABC"})
+    token = issue_key()
+    principal, key_id = new_uuid7(), new_uuid7()
+    async with engine.begin() as connection:
+        await connection.execute(text("""
+            INSERT INTO principals(id, organization_id, subject, kind)
+            VALUES (:id, '0199b167-0000-7000-8000-000000000001', :subject, 'service')
+        """), {"id": principal, "subject": str(principal)})
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("""
+            INSERT INTO api_keys(id, organization_id, project_id, principal_id,
+              name, key_prefix, key_hash, scopes)
+            VALUES (:id, '0199b167-0000-7000-8000-000000000001', :project,
+              :principal, :name, :prefix, :hash, ARRAY['runs:read'])
+        """), {"id": key_id, "project": PROJECT, "principal": principal,
+               "name": str(key_id), "prefix": token[:16], "hash": key_hash(token)})
+    app.state.engine = engine
+    headers = {"Authorization": f"Bearer {token}"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/projects/{PROJECT}/recordings/{recording_id}/archive", headers=headers)
+    assert response.status_code == 200, response.text
+    assert CANARY.encode() not in response.content
+    manifest, _ = import_bundle(response.content)
+    assert CANARY not in json.dumps(manifest)
+
+
+async def _key(engine, scopes):
+    """Issue a real API key with the given scopes for the shared project."""
+    token = issue_key()
+    principal, key_id = new_uuid7(), new_uuid7()
+    async with engine.begin() as connection:
+        await connection.execute(text("""
+            INSERT INTO principals(id, organization_id, subject, kind)
+            VALUES (:id, '0199b167-0000-7000-8000-000000000001', :subject, 'service')
+        """), {"id": principal, "subject": str(principal)})
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("""
+            INSERT INTO api_keys(id, organization_id, project_id, principal_id,
+              name, key_prefix, key_hash, scopes)
+            VALUES (:id, '0199b167-0000-7000-8000-000000000001', :project,
+              :principal, :name, :prefix, :hash, CAST(:scopes AS text[]))
+        """), {"id": key_id, "project": PROJECT, "principal": principal,
+               "name": str(key_id), "prefix": token[:16], "hash": key_hash(token),
+               "scopes": list(scopes)})
+    return token
+
+
+async def _job(engine, job_id):
+    """Diagnostic detail for a job that did not run, so a failure says why."""
+    async with project_connection(engine, PROJECT) as connection:
+        row = (await connection.execute(text("""
+            SELECT status, attempts, max_attempts, error FROM jobs
+            WHERE project_id = :project AND id = :job
+        """), {"project": PROJECT, "job": job_id})).mappings().first()
+        request = (await connection.execute(text("""
+            SELECT id FROM deletion_requests WHERE project_id = :project AND job_id = :job
+        """), {"project": PROJECT, "job": job_id})).first()
+    return f"job={dict(row) if row else None} deletion_request={request is not None}"
+
+
+async def _audit_rows(engine):
+    async with project_connection(engine, PROJECT) as connection:
+        return (await connection.execute(text("""
+            SELECT id, kind, reason, root_ids, resource_ids, bytes FROM audit_events
+            WHERE project_id = :project ORDER BY id
+        """), {"project": PROJECT})).mappings().all()
+
+
+@pytest.mark.asyncio
+async def test_access_export_and_replay_are_audited(engine):
+    """ANVIL-071: every authenticated touch of stored evidence leaves a row."""
+    recording_id = await _sealed_baseline(engine, {"sku": "ABC"})
+    candidate_run, candidate_stream = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, candidate_run, candidate_stream,
+                 _tool_events(candidate_run, candidate_stream, arguments={"sku": "XYZ"}))
+    token = await _key(engine, ["runs:read", "replay:write", "admin"])
+    app.state.engine = engine
+    app.state.cursor_secret = b"0123456789abcdef0123456789abcdef"
+    headers = {"Authorization": f"Bearer {token}"}
+    base = f"/v1/projects/{PROJECT}"
+    before = len(await _audit_rows(engine))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        assert (await client.get(f"{base}/recordings/{recording_id}", headers=headers)).status_code == 200
+        assert (await client.get(f"{base}/recordings/{recording_id}/projection", headers=headers)).status_code == 200
+        assert (await client.get(f"{base}/recordings/{recording_id}/archive", headers=headers)).status_code == 200
+        queued_export = await client.post(
+            f"/v1/recordings/{recording_id}/exports", params={"project_id": str(PROJECT)},
+            json={"include_artifacts": False},
+            headers={**headers, "Idempotency-Key": str(new_uuid7())})
+        assert queued_export.status_code == 202, queued_export.text
+        comparison = await client.post(
+            f"{base}/comparisons",
+            json={"baseline_recording_id": str(recording_id),
+                  "candidate_run_id": str(candidate_run)},
+            headers={**headers, "Idempotency-Key": str(new_uuid7())})
+        assert comparison.status_code == 202, comparison.text
+    rows = await _audit_rows(engine)
+    assert len(rows) == before + 5
+    recorded = {(row["kind"], row["reason"]) for row in rows[before:]}
+    assert recorded == {("read", "recording_read"), ("replay", "projection_built"),
+                        ("export", "archive_download"), ("export", "export_queued"),
+                        ("replay", "comparison_queued")}
+    for row in rows[before:]:
+        assert str(recording_id) in row["root_ids"]
+
+
+@pytest.mark.asyncio
+async def test_an_audit_row_holds_no_prompt_or_token(engine):
+    """The audit trail must not become a longer-lived copy of the evidence."""
+    recording_id = await _sealed_baseline(engine, {"api_key": CANARY, "sku": "ABC"})
+    token = await _key(engine, ["runs:read"])
+    app.state.engine = engine
+    headers = {"Authorization": f"Bearer {token}"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        assert (await client.get(f"/v1/projects/{PROJECT}/recordings/{recording_id}",
+                                 headers=headers)).status_code == 200
+    async with project_connection(engine, PROJECT) as connection:
+        dumped = (await connection.execute(text("""
+            SELECT coalesce(string_agg(to_jsonb(audit_events)::text, ' '), '')
+            FROM audit_events WHERE project_id = :project
+        """), {"project": PROJECT})).scalar_one()
+    assert CANARY not in dumped
+    assert token not in dumped
+    assert "inventory.lookup" not in dumped
+
+
+@pytest.mark.asyncio
+async def test_a_deletion_destroys_the_graph_and_records_what_it_destroyed(engine):
+    """ANVIL-071: deletion is carried out durably and audited, once."""
+    recording_id = await _sealed_baseline(engine, {"sku": "ABC"})
+    async with project_connection(engine, PROJECT) as connection:
+        run_id = (await connection.execute(text("""
+            SELECT run_id FROM recordings WHERE project_id = :project AND id = :recording
+        """), {"project": PROJECT, "recording": recording_id})).scalar_one()
+    candidate_run, candidate_stream = await create_run(engine, PROJECT)
+    await ingest(engine, PROJECT, candidate_run, candidate_stream,
+                 _tool_events(candidate_run, candidate_stream, arguments={"sku": "XYZ"}))
+    comparison = await create_comparison(engine, PROJECT,
+                                         baseline_recording_id=recording_id,
+                                         candidate_run_id=candidate_run)
+    assert await process_comparison(engine, PROJECT, comparison["job_id"])
+
+    token = await _key(engine, ["admin", "runs:read"])
+    app.state.engine = engine
+    headers = {"Authorization": f"Bearer {token}", "Idempotency-Key": str(new_uuid7())}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        requested = await client.post(f"/v1/projects/{PROJECT}/deletions",
+                                      json={"target_kind": "run", "target_id": str(run_id)},
+                                      headers=headers)
+        assert requested.status_code == 202, requested.text
+        deletion_id, job_id = requested.json()["deletion_id"], requested.json()["job_id"]
+
+        assert await process_deletion(engine, PROJECT, UUID(job_id)), await _job(engine, UUID(job_id))
+
+        status = await client.get(f"/v1/projects/{PROJECT}/deletions/{deletion_id}",
+                                  headers=headers)
+        assert status.status_code == 200, status.text
+        assert status.json()["status"] == "succeeded"
+        audit_event_id = status.json()["audit_event_id"]
+        assert audit_event_id is not None
+        # The deleted recording is gone from the published read surface too.
+        assert (await client.get(f"/v1/projects/{PROJECT}/recordings/{recording_id}",
+                                 headers=headers)).status_code == 404
+
+    async with project_connection(engine, PROJECT) as connection:
+        for table, column, value in (("runs", "id", run_id), ("events", "run_id", run_id),
+                                     ("recordings", "id", recording_id),
+                                     ("comparisons", "id", comparison["comparison_id"])):
+            remaining = (await connection.execute(text(
+                f"SELECT count(*) FROM {table} WHERE project_id = :project AND {column} = :value"
+            ), {"project": PROJECT, "value": value})).scalar_one()
+            assert remaining == 0, f"{table} still holds deleted rows"
+        evidence = (await connection.execute(text("""
+            SELECT kind, reason, root_ids, resource_ids, bytes FROM audit_events
+            WHERE project_id = :project AND id = :id
+        """), {"project": PROJECT, "id": UUID(audit_event_id)})).mappings().one()
+    assert evidence["kind"] == "delete"
+    assert evidence["reason"] == "user_request"
+    assert evidence["root_ids"] == [str(run_id)]
+    assert str(recording_id) in evidence["resource_ids"]
+    assert evidence["bytes"] > 0
+    # The candidate run was not a target and must survive.
+    async with project_connection(engine, PROJECT) as connection:
+        assert (await connection.execute(text("""
+            SELECT count(*) FROM runs WHERE project_id = :project AND id = :run
+        """), {"project": PROJECT, "run": candidate_run})).scalar_one() == 1
+
+
+@pytest.mark.asyncio
+async def test_a_retried_deletion_does_not_delete_or_audit_twice(engine):
+    recording_id = await _sealed_baseline(engine, {"sku": "ABC"})
+    token = await _key(engine, ["admin"])
+    app.state.engine = engine
+    headers = {"Authorization": f"Bearer {token}", "Idempotency-Key": str(new_uuid7())}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        requested = await client.post(
+            f"/v1/projects/{PROJECT}/deletions",
+            json={"target_kind": "recording", "target_id": str(recording_id)},
+            headers=headers)
+    assert requested.status_code == 202, requested.text
+    job_id = UUID(requested.json()["job_id"])
+    assert await process_deletion(engine, PROJECT, job_id), await _job(engine, job_id)
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("""
+            UPDATE jobs SET status = 'queued', lease_token = NULL
+            WHERE project_id = :project AND id = :job
+        """), {"project": PROJECT, "job": job_id})
+    assert await process_deletion(engine, PROJECT, job_id)
+    async with project_connection(engine, PROJECT) as connection:
+        rows = (await connection.execute(text("""
+            SELECT count(*) FROM audit_events WHERE project_id = :project AND kind = 'delete'
+              AND root_ids = CAST(:root AS jsonb)
+        """), {"project": PROJECT, "root": json.dumps([str(recording_id)])})).scalar_one()
+    assert rows == 1
+
+
+@pytest.mark.asyncio
+async def test_immutable_rows_can_only_be_deleted_by_a_declared_deletion(engine):
+    """ANVIL-071: the deletion exception is narrow, and nothing else widens it.
+
+    An event may be removed by a transaction that declared itself a deletion,
+    and by nothing else. It may never be edited, whatever the transaction
+    declared: a privacy deletion needs to destroy evidence, not rewrite it.
+    """
+    recording_id = await _sealed_baseline(engine, {"sku": "ABC"})
+    async with project_connection(engine, PROJECT) as connection:
+        run_id = (await connection.execute(text("""
+            SELECT run_id FROM recordings WHERE project_id = :project AND id = :recording
+        """), {"project": PROJECT, "recording": recording_id})).scalar_one()
+        event_id = (await connection.execute(text("""
+            SELECT event_id FROM events WHERE project_id = :project AND run_id = :run LIMIT 1
+        """), {"project": PROJECT, "run": run_id})).scalar_one()
+
+    for declaration, statement in (
+        (None, "DELETE FROM events WHERE project_id = :project AND event_id = :event"),
+        ("on", "UPDATE events SET replay_safe = NOT replay_safe"
+               " WHERE project_id = :project AND event_id = :event"),
+        ("off", "DELETE FROM events WHERE project_id = :project AND event_id = :event"),
+        (None, "UPDATE recordings SET schema_version = '2'"
+               " WHERE project_id = :project AND id = :recording"),
+        ("on", "UPDATE recordings SET schema_version = '2'"
+               " WHERE project_id = :project AND id = :recording"),
+    ):
+        with pytest.raises(Exception) as refused:
+            async with project_connection(engine, PROJECT) as connection:
+                if declaration is not None:
+                    await connection.execute(
+                        text(f"SET LOCAL anvil.deletion = '{declaration}'"))
+                await connection.execute(text(statement), {
+                    "project": PROJECT, "event": event_id, "recording": recording_id})
+        assert "immutable row cannot be changed" in str(refused.value)
+
+    # The declaration does not outlive its transaction, so a later statement
+    # on the same pooled connection is refused again.
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("SET LOCAL anvil.deletion = 'on'"))
+    with pytest.raises(Exception) as refused:
+        async with project_connection(engine, PROJECT) as connection:
+            await connection.execute(text("""
+                DELETE FROM events WHERE project_id = :project AND event_id = :event
+            """), {"project": PROJECT, "event": event_id})
+    assert "immutable row cannot be changed" in str(refused.value)
+
+    async with project_connection(engine, PROJECT) as connection:
+        assert (await connection.execute(text("""
+            SELECT count(*) FROM events WHERE project_id = :project AND event_id = :event
+        """), {"project": PROJECT, "event": event_id})).scalar_one() == 1

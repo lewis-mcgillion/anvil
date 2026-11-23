@@ -1,0 +1,111 @@
+{
+  "canonicalization": "RFC8785",
+  "hash": "SHA-256",
+  "projection_manifest_version": "1",
+  "projection_version": "1",
+  "projections": [
+    {
+      "checkpoint_positions": [
+        0
+      ],
+      "event_count": 5,
+      "id": "streaming",
+      "position_hashes": [
+        "02313dcf9cceaf94280336eb83f34f7009b3100aa3687278991b5687cc1cedaa",
+        "6d411238e88241294c2931a18608f1c0b6fffe46c7f3de17a5ca447564531d8a",
+        "ced782c68ca42eab4e64c8547f1d8b156897e8deccceef914549c421958f8a6b",
+        "9f4dbf58e736f04a3da4fd9913bc6998d580ef96475788085f85e9dc0fa2d629",
+        "cb5944d51b4df3f1404ddd52672201f78a93e2a8a8cd495c0a53ee7d37d86ef5",
+        "473142b3d9e6b9e29dd0cd3b809ecdd6a0c63fee239b7e192c8d9510d2ce3f4c"
+      ],
+      "projectable": true,
+      "projection_hash": "473142b3d9e6b9e29dd0cd3b809ecdd6a0c63fee239b7e192c8d9510d2ce3f4c"
+    },
+    {
+      "checkpoint_positions": [
+        0
+      ],
+      "event_count": 6,
+      "id": "parallel-calls",
+      "position_hashes": [
+        "e8e0fbdd05857ebdfd7240064c4ae79faa3efbd8ec7ac274830f9b5f9b4deaef",
+        "a4cfaf8e1b61d2a41ee69bb3736b3bc4f3f223663b09bb29a8c353cfef27eff4",
+        "15b9a6760b2c3ec4548794ce8eb672da065002ec9ec7860aca7ffb38c74bbecd",
+        "0f409d0f2c9d3c3dac69fdd2aada2a158de6f0a644e68838907bce53dee68185",
+        "aa4b1ee0f67cdc08219632da9175c2ff3a138e27c2941b7f1fc9305283a3dc06",
+        "8fcc9c77c575d44bcf059eac062337f637dc506053b8d6a7f02fdf502d8c1c68",
+        "307c2b608334da1827bbebf5b48d413df5241e9027e6dab5a250a0d9d67636e6"
+      ],
+      "projectable": true,
+      "projection_hash": "307c2b608334da1827bbebf5b48d413df5241e9027e6dab5a250a0d9d67636e6"
+    },
+    {
+      "checkpoint_positions": [
+        0
+      ],
+      "event_count": 4,
+      "id": "errors",
+      "position_hashes": [
+        "798d9546f59339d6a1693ad2ca3130955ee177c53c3cc9aa136295701e386dc1",
+        "53c01b4a0c4dad87a85fe3edb0567c01067e2917f93ef38da77ad50e2a2f9dec",
+        "6408a43ba39a05bf66d3711ab1771e407c8e19fa465b82c755190c24876b5f00",
+        "d005c60229574631de72e0c7ebeca043a9af830289b2e8b68c976f19465b843f",
+        "0c0078be4f0b05d01501499f9e21d672f9ba9bce2c1468c0176cccbcc33da4f0"
+      ],
+      "projectable": true,
+      "projection_hash": "0c0078be4f0b05d01501499f9e21d672f9ba9bce2c1468c0176cccbcc33da4f0"
+    },
+    {
+      "checkpoint_positions": [
+        0
+      ],
+      "event_count": 3,
+      "id": "redaction",
+      "position_hashes": [
+        "61117510d4e258301ece65654af007def6f6591bdb239049ce003ccb9463f8a3",
+        "164d8e09f4cb4a546861a962e7a85ee2fe3a1f7914d11c1b95f5bd69400f582e",
+        "c79888861cb3553e88aa109a59f7953cf8a67862893de7b10a013f738b8be95c",
+        "90f351d177ee9819944ff45664d73428e71711c37851ac75dd8bf3a9ff9cfdef"
+      ],
+      "projectable": true,
+      "projection_hash": "90f351d177ee9819944ff45664d73428e71711c37851ac75dd8bf3a9ff9cfdef"
+    },
+    {
+      "error": "SequenceError",
+      "id": "missing-events",
+      "projectable": false
+    },
+    {
+      "checkpoint_positions": [
+        0
+      ],
+      "event_count": 6,
+      "id": "retries",
+      "position_hashes": [
+        "e2fbe1558ff0989f99e69f761108591fc19e37829d8c80902cf67c9dd28f4eec",
+        "c8ef90c9686f517b4c57e97c7cb7ef3af46e15469047b9592d550024fd7f2691",
+        "d5ea636398a358954011dcc8e764d1efeb765f4e79cf01596d2408783de404e8",
+        "6d5266930df1a54a6ef1819e157499a77e5ac89288fb6e1da7680e33510752f4",
+        "bf58c7ea96a1691ab1d91e443ded2940d25a7395c86330ec8f5341f8aa1d29f8",
+        "9c1a7f6a139700816c2bb73c28f4daea91fb3b57cadd450b616bc4238b7e2c90",
+        "81afd201cecc324c62f1c02941e946cabe48744741419bba6eb2008a1425d183"
+      ],
+      "projectable": true,
+      "projection_hash": "81afd201cecc324c62f1c02941e946cabe48744741419bba6eb2008a1425d183"
+    },
+    {
+      "checkpoint_positions": [
+        0
+      ],
+      "event_count": 2,
+      "id": "cancellation",
+      "position_hashes": [
+        "34351c7807bbef9925f6bd5bb8fc2c16c9d987db80edaf4218b5f376e3db2008",
+        "22fa5a1a6ed86fec1a1089136d6fff5f83417147cbdd456aa60b78fb73766766",
+        "5f1055ace4c2079e364db63b4ea694198d238a21a8f1359534edc742a36e98de"
+      ],
+      "projectable": true,
+      "projection_hash": "5f1055ace4c2079e364db63b4ea694198d238a21a8f1359534edc742a36e98de"
+    }
+  ]
+}
