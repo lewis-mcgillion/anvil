@@ -8,7 +8,7 @@ from pathlib import Path
 def recording_hashes(files: list[Path]) -> dict[str, str]:
     hashes = {}
     for path in files:
-        if not path.is_file() or path.name in hashes:
+        if path.is_symlink() or not path.is_file() or path.name in hashes:
             raise ValueError("Missing or duplicated recording archive")
         digest = hashlib.sha256()
         with path.open("rb") as archive:

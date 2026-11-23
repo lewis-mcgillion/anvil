@@ -32,3 +32,13 @@ class BackupVerifyTests(unittest.TestCase):
                              ("recording.anvil", "invalid"), ("recording.txt", "a" * 64)):
             with self.assertRaises(ValueError):
                 verify_restore({name: digest}, [])
+
+    def test_symlinked_archive_cannot_satisfy_restore_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original = root / "original.anvil"
+            original.write_bytes(b"evidence")
+            link = root / "recording.anvil"
+            link.symlink_to(original)
+            with self.assertRaises(ValueError):
+                verify_restore({"recording.anvil": recording_hashes([original])["original.anvil"]}, [link])
