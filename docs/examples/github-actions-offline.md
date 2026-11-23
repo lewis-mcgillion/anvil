@@ -20,6 +20,12 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -e './server[test]'
       - run: python -m pytest -q server/tests/test_replay_fixtures.py server/tests/test_suite_assertions.py
+      - run: PYTHONPATH=server python examples/offline-fixture-smoke.py baseline
+      - run: |
+          if PYTHONPATH=server python examples/offline-fixture-smoke.py regression; then
+            echo 'Deliberate fixture regression unexpectedly passed' >&2
+            exit 1
+          fi
 ```
 
 For a consuming repository, pin the Anvil source revision and third-party
