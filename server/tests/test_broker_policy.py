@@ -2,7 +2,21 @@ from dataclasses import replace
 
 import pytest
 
-from anvil_server.broker_policy import BrokerDenied, BrokerThrottled, BudgetLedger, LiveBudget, OperatorProfile, admit_live_model, resolve_public_endpoint, dispatch_live_model, dispatch_operator_profile
+from anvil_server.broker_policy import BrokerDenied, BrokerThrottled, BudgetLedger, LiveBudget, OperatorProfile, admit_live_model, resolve_public_endpoint, dispatch_live_model, dispatch_operator_profile, environment_operator_profile
+
+
+def test_environment_profile_requires_operator_approval_and_secrets(monkeypatch):
+    prefix = "ANVIL_MODEL_PROFILE_PRIMARY_"
+    monkeypatch.setenv(prefix + "ENDPOINT", "https://models.example.com/v1/responses")
+    monkeypatch.setenv(prefix + "CREDENTIAL", "secret")
+    assert environment_operator_profile("primary").approved is False
+    monkeypatch.setenv(prefix + "APPROVED", "true")
+    profile = environment_operator_profile("primary")
+    assert profile.approved is True
+    assert profile.credential == "secret"
+    assert environment_operator_profile("../../unsafe") is None
+    monkeypatch.delenv(prefix + "CREDENTIAL")
+    assert environment_operator_profile("primary") is None
 
 
 def permitted(**changes):

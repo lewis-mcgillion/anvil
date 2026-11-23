@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import asyncio
 import ipaddress
 import json
+import os
 import ssl
 import socket
 import time
@@ -28,6 +29,20 @@ class OperatorProfile:
     endpoint: str
     credential: str
     approved: bool
+
+
+def environment_operator_profile(profile_id: str) -> OperatorProfile | None:
+    if not profile_id or not profile_id.isascii() or not all(
+        character.isalnum() or character in "-_" for character in profile_id
+    ):
+        return None
+    prefix = f"ANVIL_MODEL_PROFILE_{profile_id.upper()}_"
+    endpoint = os.environ.get(prefix + "ENDPOINT")
+    credential = os.environ.get(prefix + "CREDENTIAL")
+    if not endpoint or not credential:
+        return None
+    return OperatorProfile(endpoint=endpoint, credential=credential,
+                           approved=os.environ.get(prefix + "APPROVED") == "true")
 
 
 async def dispatch_operator_profile(*, profile_id: str,
