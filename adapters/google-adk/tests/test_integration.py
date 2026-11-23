@@ -309,12 +309,15 @@ def test_state_roundtrip_is_detached_and_cycles_rejected():
         export_state(state)
 
 
-def test_unsupported_version_rejected(monkeypatch):
-    monkeypatch.setattr("anvil_adk.version", lambda _: "2.12.0")
+@pytest.mark.parametrize("installed", ["2.12.0", "2.14.0", "3.0.0"])
+def test_unsupported_version_rejected(monkeypatch, installed):
+    monkeypatch.setattr("anvil_adk.version", lambda _: installed)
     with pytest.raises(Ineligible, match="unsupported google-adk"):
         CapturePlugin(lambda *event: None)
     with pytest.raises(Ineligible, match="unsupported google-adk"):
         ReplayModel(model="offline", resolver=FixtureResolver())
+    with pytest.raises(Ineligible, match="unsupported google-adk"):
+        ReplayTool(declaration={"name": "lookup"}, resolver=FixtureResolver())
 
 
 async def test_real_session_reconstructed_from_explicit_snapshot():
