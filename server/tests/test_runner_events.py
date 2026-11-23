@@ -85,3 +85,20 @@ async def test_persisted_session_reclaims_directory_on_failure(monkeypatch, tmp_
             adapter="google-adk", config="config", fixtures="fixtures",
         )
     assert not (tmp_path / "uds").exists()
+
+
+@pytest.mark.asyncio
+async def test_persisted_session_rejects_leftover_socket_directory_contents(monkeypatch, tmp_path):
+    monkeypatch.setattr("anvil_server.runner_events.prepare_runner_socket_directory", lambda path: path.mkdir())
+
+    async def isolated(launch, directory, seccomp, **options):
+        (directory / "unexpected").write_text("sentinel")
+        return 1
+
+    monkeypatch.setattr("anvil_server.runner_events.run_isolated_recorded_session", isolated)
+    with pytest.raises(IsolationUnavailable, match="cleanup failed"):
+        await run_persisted_recorded_session(
+            "engine", PROJECT, "launch", tmp_path / "uds", tmp_path / "profile",
+            adapter="google-adk", config="config", fixtures="fixtures",
+        )
+    assert (tmp_path / "uds" / "unexpected").read_text() == "sentinel"

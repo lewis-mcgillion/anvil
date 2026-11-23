@@ -55,4 +55,7 @@ async def run_persisted_recorded_session(
             timeout_seconds=timeout_seconds,
         )
     finally:
-        socket_directory.rmdir()
+        try:
+            socket_directory.rmdir()
+        except OSError as error:
+            raise IsolationUnavailable("Runner socket directory cleanup failed") from error
