@@ -56,6 +56,30 @@ def test_ready_fails_closed():
     assert response.headers["content-type"] == "application/problem+json"
 
 
+def test_shutdown_disposes_database_engine(monkeypatch):
+    import asyncio
+    from importlib import import_module
+
+    class Engine:
+        disposals = 0
+
+        async def dispose(self):
+            self.disposals += 1
+
+    engine = Engine()
+    monkeypatch.setenv("ANVIL_DATABASE_URL", "postgresql+asyncpg://test/test")
+    app_module = import_module("anvil_server.app")
+    monkeypatch.setattr(app_module, "engine_for", lambda _: engine)
+
+    async def check():
+        async with app_module.lifespan(app):
+            assert app.state.engine is engine
+            assert engine.disposals == 0
+
+    asyncio.run(check())
+    assert engine.disposals == 1
+
+
 def test_mutation_does_not_fake_success():
     response = client.post("/v1/projects", json={"name": "example"})
     assert response.status_code == 503
