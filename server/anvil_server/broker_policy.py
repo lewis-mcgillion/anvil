@@ -1,6 +1,7 @@
 """Static fail-closed admission checks for future live-model dispatch."""
 
 from dataclasses import dataclass
+import ipaddress
 from urllib.parse import urlsplit
 
 
@@ -32,8 +33,14 @@ def admit_live_model(*, mode: str, approved: bool, profile_endpoint: str,
         raise BrokerDenied("Live inference requires explicit approved opt-in")
     parsed = urlsplit(profile_endpoint)
     requested = urlsplit(requested_endpoint)
+    try:
+        address = ipaddress.ip_address(parsed.hostname or "")
+    except ValueError:
+        address = None
     if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
             or parsed.fragment or parsed.query or not parsed.path.startswith("/")
-            or requested != parsed or parsed.hostname.endswith(".local")):
+            or requested != parsed or parsed.hostname.endswith((".local", ".localhost", ".internal"))
+            or parsed.hostname in {"localhost", "metadata.google.internal"}
+            or address is not None or parsed.port not in (None, 443)):
         raise BrokerDenied("Model endpoint is not an approved HTTPS profile endpoint")
     budget.validate()
