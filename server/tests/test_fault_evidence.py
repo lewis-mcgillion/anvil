@@ -1,7 +1,7 @@
 import pytest
 
 from anvil_server.faults import FaultEngine, FaultPlan, Invocation, MockFixture
-from anvil_server.faults.evidence import fault_applied_payload, fault_report_payload, persist_fault_report, suite_fault_observations, unreached_fault_ids
+from anvil_server.faults.evidence import fault_applied_payload, fault_report_payload, load_fault_report, persist_fault_report, suite_fault_observations, unreached_fault_ids
 from anvil_server.identifiers import new_uuid7
 
 
@@ -63,3 +63,29 @@ def test_fault_report_migration_enforces_project_isolation():
     migration = (Path(__file__).parents[2] / "migrations/0009_fault_reports.sql").read_text()
     assert "ALTER TABLE fault_reports FORCE ROW LEVEL SECURITY" in migration
     assert "CREATE POLICY fault_reports_project_isolation" in migration
+
+
+@pytest.mark.asyncio
+async def test_fault_report_read_rejects_digest_mismatch(monkeypatch):
+    from contextlib import asynccontextmanager
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def first(self):
+            return {"report": {"report_sha256": "0" * 64,
+                               "applied_fault_ids": [], "unreached_fault_ids": []},
+                    "report_digest": "1" * 64}
+
+    class Connection:
+        async def execute(self, *args):
+            return Result()
+
+    @asynccontextmanager
+    async def connection(engine, project):
+        yield Connection()
+
+    monkeypatch.setattr("anvil_server.faults.evidence.project_connection", connection)
+    with pytest.raises(ValueError, match="metadata"):
+        await load_fault_report(None, *(new_uuid7() for _ in range(3)))

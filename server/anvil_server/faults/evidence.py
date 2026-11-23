@@ -63,3 +63,23 @@ async def persist_fault_report(engine: AsyncEngine, project_id: UUID, run_id: UU
             ON CONFLICT (project_id, run_id, report_digest) DO NOTHING
         """), {"id": report_id, "project": project_id, "run": run_id,
                "report": json.dumps(payload, sort_keys=True), "digest": report.digest})
+
+
+async def load_fault_report(engine: AsyncEngine, project_id: UUID, run_id: UUID,
+                            report_id: UUID) -> dict | None:
+    if any(not isinstance(identifier, UUID) or identifier.version != 7
+           for identifier in (project_id, run_id, report_id)):
+        raise ValueError("Fault report lookup requires UUIDv7 identities")
+    async with project_connection(engine, project_id) as connection:
+        row = (await connection.execute(text("""
+            SELECT report, report_digest FROM fault_reports
+            WHERE project_id = :project AND run_id = :run AND id = :id
+        """), {"project": project_id, "run": run_id, "id": report_id})).mappings().first()
+    if row is None:
+        return None
+    report = row["report"]
+    if (not isinstance(report, dict) or report.get("report_sha256") != row["report_digest"]
+            or not isinstance(report.get("applied_fault_ids"), list)
+            or not isinstance(report.get("unreached_fault_ids"), list)):
+        raise ValueError("Stored fault report metadata is invalid")
+    return report
