@@ -192,6 +192,22 @@ async def test_attempt_rejects_missing_budgeted_resource_counter():
 
 
 @pytest.mark.asyncio
+async def test_attempt_rejects_structured_runner_failure():
+    sealed = []
+
+    async def run():
+        return {"outcome": "failed", "resources": {"model_calls": 0}}
+
+    async def seal(evidence):
+        sealed.append(evidence)
+
+    evidence = await execute_attempt(sample(), run, seal)
+    assert evidence["outcome"] == "failed"
+    assert evidence["failure_code"] == "runner_outcome"
+    assert sealed == [evidence]
+
+
+@pytest.mark.asyncio
 async def test_attempt_seals_cancellation():
     import asyncio
 
