@@ -78,3 +78,30 @@ async def test_suite_timeout_records_error_and_cleans_up():
     result = await execute_suite_cases(["stalled"], execute, timeout_seconds=0.001)
     assert result == {"stalled": "error"}
     assert cleaned.is_set()
+
+
+@pytest.mark.asyncio
+async def test_suite_cancellation_reclaims_all_active_cases():
+    import asyncio
+
+    started = set()
+    stopped = set()
+    both_running = asyncio.Event()
+
+    async def execute(case_id):
+        started.add(case_id)
+        if len(started) == 2:
+            both_running.set()
+        try:
+            await asyncio.Future()
+        finally:
+            stopped.add(case_id)
+
+    task = asyncio.create_task(execute_suite_cases(
+        ["first", "second", "third"], execute, parallelism=2,
+    ))
+    await both_running.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 1)
+    assert started == stopped == {"first", "second"}
