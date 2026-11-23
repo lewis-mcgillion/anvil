@@ -27,6 +27,10 @@ test("10k-event read-only timeline renders a bounded viewport and seeks", async 
   await page.getByRole("button", { name: "Inspect run" }).click();
   await expect(page.getByText("10000 events loaded", { exact: false })).toBeVisible();
   await expect(page.locator(".event-row")).toHaveCount(24);
+  await page.getByLabel("Show streaming model chunks only").check();
+  await expect(page.locator(".event-row")).toHaveCount(0);
+  await page.getByLabel("Show streaming model chunks only").uncheck();
+  await expect(page.locator(".event-row")).toHaveCount(24);
   await page.getByLabel("Seek to event").fill("9999");
   await expect(page.getByText("Chunk 9998")).toBeVisible();
   expect(executionCalls).toBe(0);
@@ -116,6 +120,9 @@ test("timeline shows observed causal branches and missing parents", async ({ pag
     .toContainText("1 parent references unavailable");
   await page.getByRole("button", { name: `Stream ${streamB}`, exact: true }).click();
   await expect(page.locator(".event-row")).toHaveCount(1);
+  await page.getByLabel("Show streaming model chunks only").check();
+  await expect(page.locator(".event-row")).toHaveCount(1);
+  await page.getByLabel("Show streaming model chunks only").uncheck();
 });
 
 test("event inspector accumulates pages without rendering every row", async ({ page }) => {

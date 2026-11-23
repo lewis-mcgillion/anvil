@@ -53,12 +53,14 @@ function EventInspector({ client, projectId, runId }: { client: ReturnType<typeo
   const [scrollTop, setScrollTop] = useState(0);
   const [selected, setSelected] = useState<string>();
   const [streamFilter, setStreamFilter] = useState("");
+  const [chunksOnly, setChunksOnly] = useState(false);
   const seenCursors = useRef(new Set<string>());
   const viewport = useRef<HTMLDivElement>(null);
   const rowHeight = 56;
   const streams = [...new Set(events.map((event) => event.stream_id))];
   const branches = timelineBranches(events);
-  const filtered = streamFilter ? events.filter((event) => event.stream_id === streamFilter) : events;
+  const filtered = events.filter((event) =>
+    (!streamFilter || event.stream_id === streamFilter) && (!chunksOnly || event.type === "model.chunk"));
   const windowed = timelineWindow(filtered.length, scrollTop, rowHeight, 420);
   const seekTo = (eventId: string) => {
     const position = filtered.findIndex((event) => event.event_id === eventId);
@@ -104,6 +106,9 @@ function EventInspector({ client, projectId, runId }: { client: ReturnType<typeo
       setStreamFilter(event.target.value); setScrollTop(0); viewport.current?.scrollTo({ top: 0 });
     }}><option value="">All streams</option>{streams.map((stream) =>
       <option key={stream} value={stream}>{stream}</option>)}</select></label>
+    <label><input type="checkbox" checked={chunksOnly} onChange={(event) => {
+      setChunksOnly(event.target.checked); setScrollTop(0); viewport.current?.scrollTo({ top: 0 });
+    }} /> Show streaming model chunks only</label>
     <label>Seek to event <input type="number" min={1} max={filtered.length} placeholder="Event number"
       onChange={(event) => {
         const position = Number(event.target.value) - 1;
