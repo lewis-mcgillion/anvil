@@ -1,6 +1,6 @@
 import pytest
 
-from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt, verify_evidence, persist_evidence
+from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt, verify_evidence, persist_evidence, load_evidence
 
 
 def sample():
@@ -167,3 +167,30 @@ async def test_persistence_rejects_corrupt_evidence_before_database_access():
     with pytest.raises(InvalidAttempt, match="checksum"):
         await persist_evidence(None, identifier, identifier, identifier,
                                {"outcome": "succeeded", "sha256": "0" * 64})
+
+
+@pytest.mark.asyncio
+async def test_load_evidence_rejects_stored_checksum_mismatch(monkeypatch):
+    from contextlib import asynccontextmanager
+    from uuid import UUID
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def first(self):
+            return {"evidence": {"outcome": "succeeded", "sha256": "0" * 64}, "digest": "0" * 64}
+
+    class Connection:
+        async def execute(self, statement, params):
+            assert "project_id = :project" in str(statement)
+            return Result()
+
+    @asynccontextmanager
+    async def connection(engine, project_id):
+        yield Connection()
+
+    monkeypatch.setattr("anvil_server.attempt_provenance.project_connection", connection)
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    with pytest.raises(InvalidAttempt, match="checksum mismatch"):
+        await load_evidence(None, identifier, identifier, identifier)

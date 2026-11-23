@@ -50,6 +50,23 @@ async def persist_evidence(engine: AsyncEngine, project_id: UUID, job_id: UUID,
                "evidence": serialized, "digest": evidence["sha256"]})
 
 
+async def load_evidence(engine: AsyncEngine, project_id: UUID, job_id: UUID,
+                        evidence_id: UUID) -> dict[str, object] | None:
+    if not all(isinstance(identifier, UUID) for identifier in (project_id, job_id, evidence_id)):
+        raise InvalidAttempt("Candidate evidence requires UUID identities")
+    async with project_connection(engine, project_id) as connection:
+        row = (await connection.execute(text("""
+            SELECT evidence, digest FROM attempt_evidence
+            WHERE project_id = :project AND job_id = :job AND id = :id
+        """), {"project": project_id, "job": job_id, "id": evidence_id})).mappings().first()
+    if row is None:
+        return None
+    evidence = row["evidence"]
+    if not isinstance(evidence, dict) or evidence.get("sha256") != row["digest"] or not verify_evidence(evidence):
+        raise InvalidAttempt("Stored candidate evidence checksum mismatch")
+    return evidence
+
+
 _DIGEST = re.compile(r"[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}")
 _REQUIRED = frozenset({"reexecution_id", "recording_id", "agent_version_id",
                        "image_digest", "adapter", "adapter_version", "model_mode",
