@@ -11,3 +11,10 @@ class LicenseGateTests(unittest.TestCase):
         for value in ("GPL-3.0-only", "UNKNOWN", "", "MIT OR GPL-3.0-only"):
             with self.assertRaises(ValueError):
                 check_inventory([{"name": "library", "license": value}])
+
+    def test_duplicate_or_missing_dependency_identity_fails(self):
+        for inventory in ([{"name": "library", "license": "MIT"}] * 2,
+                          [{"name": " ", "license": "MIT"}],
+                          [{"name": "library", "license": "MIT", "version": ""}]):
+            with self.assertRaises(ValueError):
+                check_inventory(inventory)
