@@ -83,7 +83,10 @@ async def supervise_container(
                 raise IsolationUnavailable("Runner execution timed out") from error
         finally:
             if process.returncode is None:
-                os.killpg(process.pid, signal.SIGKILL)
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
             await asyncio.shield(process.wait())
             if container_id_file.exists():
                 container_id = container_id_file.read_text().strip()

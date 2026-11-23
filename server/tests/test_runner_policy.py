@@ -81,3 +81,34 @@ async def test_supervisor_fails_closed_without_runtime(tmp_path, monkeypatch):
         supervisor.bind(str(directory / "supervisor.sock"))
         with pytest.raises(IsolationUnavailable, match="runtime"):
             await supervise_container(safe_launch(), directory, profile)
+
+
+@pytest.mark.asyncio
+async def test_supervisor_kills_timed_out_runner(tmp_path, monkeypatch):
+    directory = tmp_path / "uds"
+    directory.mkdir(mode=0o700)
+    profile = tmp_path / "seccomp.json"
+    profile.write_text("{}")
+    profile.chmod(0o600)
+    killed = []
+
+    class HungProcess:
+        pid = 4242
+        returncode = None
+
+        async def wait(self):
+            if not killed:
+                await asyncio.sleep(10)
+            self.returncode = -9
+            return self.returncode
+
+    async def fake_spawn(*args, **kwargs):
+        return HungProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_spawn)
+    monkeypatch.setattr("anvil_server.runner_policy.os.killpg", lambda pid, signal: killed.append(pid))
+    with socket.socket(socket.AF_UNIX) as supervisor:
+        supervisor.bind(str(directory / "supervisor.sock"))
+        with pytest.raises(IsolationUnavailable, match="timed out"):
+            await supervise_container(safe_launch(), directory, profile, timeout_seconds=0.001)
+    assert killed == [4242]
