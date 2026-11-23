@@ -57,6 +57,24 @@ def test_operator_pricing_rates_must_be_explicit_pair():
         LiveBudget(input_micro_usd_per_token=-1, output_micro_usd_per_token=2).validate()
 
 
+@pytest.mark.asyncio
+async def test_priced_input_exceeding_budget_is_rejected_before_network(monkeypatch):
+    async def forbidden(*args, **kwargs):
+        pytest.fail("Budget rejection must happen before DNS or provider access")
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint", forbidden)
+    endpoint = "https://models.example.com/v1/responses"
+    ledger = BudgetLedger(LiveBudget(
+        estimated_usd=0.000001, input_micro_usd_per_token=10,
+        output_micro_usd_per_token=10,
+    ))
+    with pytest.raises(BrokerDenied, match="input cost"):
+        await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint,
+                                  approved=True, credential="operator-secret",
+                                  payload={"model": "test"}, ledger=ledger)
+    assert ledger.model_calls == 0
+
+
 def test_broker_budget_cancellation_and_expired_wall_time():
     ledger = BudgetLedger(LiveBudget())
     ledger.cancel()

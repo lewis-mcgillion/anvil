@@ -144,6 +144,10 @@ async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, a
     if len(body) > 1_048_576:
         raise BrokerDenied("Model request exceeds broker size limit")
     estimated_input_tokens = (len(body) + 3) // 4
+    if ledger.budget.input_micro_usd_per_token is not None:
+        minimum_cost = estimated_input_tokens * ledger.budget.input_micro_usd_per_token
+        if ledger.micro_usd + minimum_cost > int(ledger.budget.estimated_usd * 1_000_000):
+            raise BrokerDenied("Broker estimated input cost exceeds spending budget")
     ledger.charge(model_calls=1, input_tokens=estimated_input_tokens)
     hostname = urlsplit(endpoint).hostname
     reader = writer = None
