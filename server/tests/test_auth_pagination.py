@@ -33,6 +33,6 @@ def test_signed_cursor_is_scoped_and_tamper_evident():
 def test_event_cursor_position_rejects_invalid_sequence_types():
     identifier = "0199b167-0000-7000-8000-000000000031"
     assert event_cursor_position([identifier, 0, identifier]) == [identifier, 0, identifier]
-    for sequence in (-1, True, "1", 1.5, None):
+    for sequence in (-1, 2**63, True, "1", 1.5, None):
         with pytest.raises(ValueError):
             event_cursor_position([identifier, sequence, identifier])

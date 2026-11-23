@@ -794,7 +794,7 @@ async def list_events(request: Request, project_id: UUID, run_id: UUID, limit: i
 def event_cursor_position(after: object) -> list[str | int]:
     if (not isinstance(after, list) or len(after) != 3
             or not isinstance(after[1], int) or isinstance(after[1], bool)
-            or after[1] < 0):
+            or after[1] < 0 or after[1] > 2**63 - 1):
         raise ValueError("Invalid cursor position")
     return [str(UUID(after[0])), after[1], str(UUID(after[2]))]
 
