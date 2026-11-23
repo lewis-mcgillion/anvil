@@ -132,7 +132,7 @@ async def execute_attempt(
     try:
         async with asyncio.timeout(wall_seconds):
             result = await execute()
-        if type(result) is int and result != 1:
+        if result is False or (type(result) is int and result != 1):
             failure = "runner_outcome"
         else:
             outcome = "succeeded"

@@ -111,6 +111,22 @@ async def test_attempt_does_not_mark_failed_runner_outcome_successful():
 
 
 @pytest.mark.asyncio
+async def test_attempt_rejects_boolean_false_result():
+    sealed = []
+
+    async def failed_runner():
+        return False
+
+    async def seal(evidence):
+        sealed.append(evidence)
+
+    evidence = await execute_attempt(sample(), failed_runner, seal)
+    assert evidence["outcome"] == "failed"
+    assert evidence["failure_code"] == "runner_outcome"
+    assert sealed == [evidence]
+
+
+@pytest.mark.asyncio
 async def test_attempt_seals_cancellation():
     import asyncio
 
