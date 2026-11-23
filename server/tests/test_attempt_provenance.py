@@ -94,3 +94,22 @@ async def test_attempt_cancellation_during_seal_does_not_discard_evidence():
     evidence = await asyncio.wait_for(task, 1)
     assert evidence["outcome"] == "succeeded"
     assert sealed == [evidence]
+
+
+@pytest.mark.asyncio
+async def test_attempt_timeout_seals_failure_evidence(monkeypatch):
+    import asyncio
+
+    sealed = []
+
+    async def run():
+        await asyncio.Future()
+
+    async def seal(evidence):
+        sealed.append(evidence)
+
+    attempt = sample()
+    attempt["budgets"] = {"wall_seconds": 1}
+    evidence = await asyncio.wait_for(execute_attempt(attempt, run, seal), 2)
+    assert evidence["outcome"] == "timed_out"
+    assert sealed == [evidence]
