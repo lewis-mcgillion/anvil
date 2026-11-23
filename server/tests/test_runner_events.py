@@ -3,7 +3,7 @@ from uuid import UUID
 
 import pytest
 
-from anvil_server.runner_events import postgres_event_sink
+from anvil_server.runner_events import postgres_event_sink, run_persisted_recorded_session
 from anvil_server.runner_pb2 import RunnerMessage
 from anvil_server.runner_policy import IsolationUnavailable
 
@@ -46,3 +46,24 @@ async def test_runner_event_sink_rejects_invalid_payload(monkeypatch):
     monkeypatch.setattr("anvil_server.runner_events.accept_batch", ingest)
     with pytest.raises(IsolationUnavailable, match="schema validation"):
         await postgres_event_sink("engine", PROJECT)(batch(b"not-json"))
+
+
+@pytest.mark.asyncio
+async def test_persisted_session_routes_batches_to_capture_ingest(monkeypatch, tmp_path):
+    stored = []
+
+    async def ingest(engine, project, run, stream, events):
+        stored.append((engine, project, run, stream, events))
+
+    async def isolated(launch, directory, seccomp, **options):
+        await options["persist_events"](batch())
+        return 1
+
+    monkeypatch.setattr("anvil_server.runner_events.accept_batch", ingest)
+    monkeypatch.setattr("anvil_server.runner_events.run_isolated_recorded_session", isolated)
+    result = await run_persisted_recorded_session(
+        "engine", PROJECT, "launch", tmp_path, tmp_path / "profile",
+        adapter="google-adk", config="config", fixtures="fixtures",
+    )
+    assert result == 1
+    assert stored[0][:4] == ("engine", PROJECT, UUID(RUN), UUID(STREAM))
