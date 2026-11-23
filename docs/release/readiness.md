@@ -18,3 +18,10 @@ recording hashes, commands, timings, exit codes, logs with secrets removed,
 failure drill outcomes and outstanding issue references. A missing record or
 inconclusive test counts as **not ready**, never as a pass. Re-evaluate only
 after blockers are resolved; do not silently waive a safety gate.
+
+After genuine results exist, record six entries (three agent identifiers in
+each of two environment identifiers) with booleans for `capture`, `seal`,
+`replay`, `comparison`, `ci_regression` and `isolation`, plus `recording_hash`
+and `evidence_path`. Run `python scripts/verify_alpha_readiness.py results.json`
+to reject missing or failed matrix entries. This validates inventory shape
+only; it cannot authenticate evidence logs or supersede independent review.
