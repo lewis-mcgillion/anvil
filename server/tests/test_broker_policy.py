@@ -68,11 +68,28 @@ async def test_priced_input_exceeding_budget_is_rejected_before_network(monkeypa
         estimated_usd=0.000001, input_micro_usd_per_token=10,
         output_micro_usd_per_token=10,
     ))
-    with pytest.raises(BrokerDenied, match="input cost"):
+    with pytest.raises(BrokerDenied, match="reserved request cost"):
         await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint,
                                   approved=True, credential="operator-secret",
-                                  payload={"model": "test"}, ledger=ledger)
+                                  payload={"model": "test", "max_output_tokens": 1}, ledger=ledger)
     assert ledger.model_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_priced_request_requires_output_cap_before_network(monkeypatch):
+    async def forbidden(*args, **kwargs):
+        pytest.fail("Missing cap must fail before network access")
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint", forbidden)
+    endpoint = "https://models.example.com/v1/responses"
+    with pytest.raises(BrokerDenied, match="output token cap"):
+        await dispatch_live_model(
+            endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+            credential="operator-secret", payload={"model": "test"},
+            ledger=BudgetLedger(LiveBudget(
+                input_micro_usd_per_token=1, output_micro_usd_per_token=1,
+            )),
+        )
 
 
 def test_broker_budget_cancellation_and_expired_wall_time():

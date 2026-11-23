@@ -145,9 +145,16 @@ async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, a
         raise BrokerDenied("Model request exceeds broker size limit")
     estimated_input_tokens = (len(body) + 3) // 4
     if ledger.budget.input_micro_usd_per_token is not None:
-        minimum_cost = estimated_input_tokens * ledger.budget.input_micro_usd_per_token
-        if ledger.micro_usd + minimum_cost > int(ledger.budget.estimated_usd * 1_000_000):
-            raise BrokerDenied("Broker estimated input cost exceeds spending budget")
+        output_cap = payload.get("max_output_tokens")
+        if type(output_cap) is not int or output_cap <= 0:
+            raise BrokerDenied("Priced model requests require a positive output token cap")
+        remaining_output = ledger.budget.output_tokens - ledger.output_tokens
+        if output_cap > remaining_output:
+            raise BrokerDenied("Model output cap exceeds remaining token budget")
+        reserved_cost = (estimated_input_tokens * ledger.budget.input_micro_usd_per_token
+                         + output_cap * ledger.budget.output_micro_usd_per_token)
+        if ledger.micro_usd + reserved_cost > int(ledger.budget.estimated_usd * 1_000_000):
+            raise BrokerDenied("Broker reserved request cost exceeds spending budget")
     ledger.charge(model_calls=1, input_tokens=estimated_input_tokens)
     hostname = urlsplit(endpoint).hostname
     reader = writer = None
