@@ -56,9 +56,12 @@ def container_arguments(launch: RunnerLaunch, socket_directory: Path, seccomp_pr
         raise IsolationUnavailable("Runner seccomp policy must deny syscalls by default")
     rules = profile.get("syscalls", [])
     if not isinstance(rules, list) or any(
-        not isinstance(rule, dict) or rule.get("action") == "SCMP_ACT_ALLOW" and any(
+        not isinstance(rule, dict)
+        or not isinstance(rule.get("names"), list)
+        or not all(isinstance(name, str) for name in rule["names"])
+        or rule.get("action") == "SCMP_ACT_ALLOW" and any(
             name in {"mount", "umount2", "ptrace", "bpf", "setns", "unshare", "keyctl"}
-            for name in rule.get("names", [])
+            for name in rule["names"]
         ) for rule in rules
     ):
         raise IsolationUnavailable("Runner seccomp profile allows forbidden privileged syscalls")
