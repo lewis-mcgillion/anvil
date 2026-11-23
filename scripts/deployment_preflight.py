@@ -21,11 +21,15 @@ class PublicDeployment:
     max_runner_seconds: int = 120
 
     def validate(self) -> None:
-        issuer = urlsplit(self.trusted_oidc_issuer)
-        if (self.tls_enabled is not True or not self.trusted_oidc_issuer.startswith("https://")
+        try:
+            issuer = urlsplit(self.trusted_oidc_issuer)
+            issuer_port = issuer.port
+        except (ValueError, TypeError) as error:
+            raise UnsafeDeployment("Invalid public OIDC issuer") from error
+        if (self.tls_enabled is not True or issuer.scheme != "https"
                 or issuer.hostname in {None, "localhost", "127.0.0.1", "::1"}
                 or issuer.username is not None or issuer.password is not None
-                or issuer.query or issuer.fragment
+                or issuer.query or issuer.fragment or issuer_port == 0
                 or not self.oidc_audience or self.secrets_mounted is not True
                 or self.public_database_port is not False
                 or self.runner_network_disabled is not True
