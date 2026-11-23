@@ -287,6 +287,48 @@ async def test_leased_attempt_seals_before_completing_job():
 
 
 @pytest.mark.asyncio
+async def test_lease_renewal_failure_cancels_execution_before_completion(monkeypatch):
+    import asyncio
+    from uuid import UUID
+
+    cancelled = asyncio.Event()
+    completed = []
+
+    class Queue:
+        async def acquire_job(self, *args):
+            return {"id": args[1]}
+
+        async def heartbeat(self, *args):
+            raise RuntimeError("lease lost")
+
+        async def complete(self, *args):
+            completed.append(args)
+
+    async def run():
+        try:
+            await asyncio.Future()
+        finally:
+            cancelled.set()
+
+    async def seal(evidence):
+        pass
+
+    original_sleep = asyncio.sleep
+
+    async def immediate_sleep(seconds):
+        await original_sleep(0)
+
+    monkeypatch.setattr("anvil_server.attempt_provenance.asyncio.sleep", immediate_sleep)
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    with pytest.raises(RuntimeError, match="lease lost"):
+        await asyncio.wait_for(run_leased_attempt(
+            Queue(), identifier, identifier, identifier, sample(), run, seal,
+        ), 1)
+    assert cancelled.is_set()
+    assert completed == []
+
+
+@pytest.mark.asyncio
 async def test_unavailable_lease_never_runs_candidate():
     from uuid import UUID
 

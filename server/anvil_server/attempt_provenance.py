@@ -172,7 +172,29 @@ async def run_leased_attempt(
         raise InvalidAttempt("Candidate wall-time budget must be positive")
     if await queue.acquire_job(project_id, job_id, lease_token) is None:
         return None
-    evidence = await execute_attempt(details, execute, seal)
+    async def renew_lease() -> None:
+        while True:
+            await asyncio.sleep(10)
+            await queue.heartbeat(project_id, job_id, lease_token)
+
+    heartbeat_task = asyncio.create_task(renew_lease()) if callable(getattr(queue, "heartbeat", None)) else None
+    try:
+        attempt_task = asyncio.create_task(execute_attempt(details, execute, seal))
+        if heartbeat_task is not None:
+            done, _ = await asyncio.wait({attempt_task, heartbeat_task}, return_when=asyncio.FIRST_COMPLETED)
+            if heartbeat_task in done:
+                attempt_task.cancel()
+                await asyncio.gather(attempt_task, return_exceptions=True)
+                await heartbeat_task
+                raise InvalidAttempt("Candidate lease renewal stopped unexpectedly")
+        evidence = await attempt_task
+    finally:
+        if not attempt_task.done():
+            attempt_task.cancel()
+            await asyncio.gather(attempt_task, return_exceptions=True)
+        if heartbeat_task is not None:
+            heartbeat_task.cancel()
+            await asyncio.gather(heartbeat_task, return_exceptions=True)
     terminal_status = "succeeded" if evidence["outcome"] == "succeeded" else (
         "cancelled" if evidence["outcome"] == "cancelled" else "failed"
     )
