@@ -62,6 +62,14 @@ async def dispatch_operator_profile(*, profile_id: str,
     )
 
 
+async def dispatch_server_profile(*, profile_id: str, payload: dict,
+                                  ledger: BudgetLedger) -> dict:
+    return await dispatch_operator_profile(
+        profile_id=profile_id, lookup=environment_operator_profile,
+        payload=payload, ledger=ledger,
+    )
+
+
 @dataclass(frozen=True)
 class LiveBudget:
     wall_seconds: int = 120

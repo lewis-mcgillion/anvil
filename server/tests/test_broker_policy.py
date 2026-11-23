@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from anvil_server.broker_policy import BrokerDenied, BrokerThrottled, BudgetLedger, LiveBudget, OperatorProfile, admit_live_model, resolve_public_endpoint, dispatch_live_model, dispatch_operator_profile, environment_operator_profile
+from anvil_server.broker_policy import BrokerDenied, BrokerThrottled, BudgetLedger, LiveBudget, OperatorProfile, admit_live_model, resolve_public_endpoint, dispatch_live_model, dispatch_operator_profile, dispatch_server_profile, environment_operator_profile
 
 
 def test_environment_profile_requires_operator_approval_and_secrets(monkeypatch):
@@ -17,6 +17,16 @@ def test_environment_profile_requires_operator_approval_and_secrets(monkeypatch)
     assert environment_operator_profile("../../unsafe") is None
     monkeypatch.delenv(prefix + "CREDENTIAL")
     assert environment_operator_profile("primary") is None
+
+
+@pytest.mark.asyncio
+async def test_server_profile_disallows_unconfigured_provider(monkeypatch):
+    monkeypatch.delenv("ANVIL_MODEL_PROFILE_MISSING_CREDENTIAL", raising=False)
+    with pytest.raises(BrokerDenied, match="unavailable"):
+        await dispatch_server_profile(
+            profile_id="missing", payload={"model": "test"},
+            ledger=BudgetLedger(LiveBudget()),
+        )
 
 
 def permitted(**changes):
