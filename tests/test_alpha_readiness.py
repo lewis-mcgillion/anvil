@@ -18,6 +18,8 @@ class AlphaReadinessTests(unittest.TestCase):
     def test_missing_failed_or_duplicate_results_rejected(self):
         for mutation in (lambda rows: rows.pop(),
                          lambda rows: rows[0].update(isolation=False),
+                         lambda rows: rows[0].update(recording_hash="sha256:abc"),
+                         lambda rows: rows[0].update(recording_hash="sha256:" + "A" * 64),
                          lambda rows: rows[0].update(evidence_path=""),
                          lambda rows: rows[0].update(environment="hosted")):
             rows = evidence()

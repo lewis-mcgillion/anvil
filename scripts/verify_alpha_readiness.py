@@ -1,6 +1,7 @@
 """Reject incomplete alpha evidence across three agents and two installations."""
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -24,7 +25,7 @@ def verify_alpha(records: list[dict]) -> None:
         if (any(record.get(gate) is not True for gate in
                 ("capture", "seal", "replay", "comparison", "ci_regression", "isolation"))
                 or type(record.get("recording_hash")) is not str
-                or not record["recording_hash"].startswith("sha256:")
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", record["recording_hash"]) is None
                 or type(record.get("evidence_path")) is not str or not record["evidence_path"]):
             raise ValueError("Alpha result has missing or inconclusive evidence")
     if len(agents) != 3 or len(environments) != 2:
