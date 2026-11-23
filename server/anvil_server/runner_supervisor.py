@@ -1,6 +1,7 @@
 """Bounded, versioned protobuf handshake over the runner supervisor UDS."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 
 from .runner_pb2 import RunnerMessage, SupervisorMessage, RUN_OUTCOME_UNSPECIFIED
 from .runner_policy import IsolationUnavailable
@@ -62,8 +63,10 @@ async def receive_terminal_outcome(reader: asyncio.StreamReader, writer: asyncio
 
 
 async def supervise_recorded_messages(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
-                                      *, run_id: str, timeout_seconds: float = 60) -> int:
-    if not run_id or timeout_seconds <= 0:
+                                      *, run_id: str,
+                                      persist_events: Callable[[object], Awaitable[None]],
+                                      timeout_seconds: float = 60) -> int:
+    if not run_id or timeout_seconds <= 0 or not callable(persist_events):
         raise IsolationUnavailable("Invalid recorded runner supervision configuration")
     sequences: dict[str, int] = {}
     async with asyncio.timeout(timeout_seconds):
@@ -82,6 +85,7 @@ async def supervise_recorded_messages(reader: asyncio.StreamReader, writer: asyn
                             or event.sequence != expected):
                         raise IsolationUnavailable("Runner event sequence or identity mismatch")
                     expected += 1
+                await persist_events(batch)
                 sequences[batch.stream_id] = expected
                 await write_supervisor_message(writer, SupervisorMessage(event_ack={
                     "run_id": run_id, "stream_id": batch.stream_id,

@@ -100,7 +100,13 @@ async def test_supervisor_acks_recorded_events_and_terminal_outcome():
         async def drain(self):
             pass
 
-    assert await supervise_recorded_messages(reader, Writer(), run_id="run") == 1
+    persisted = []
+
+    async def persist(batch):
+        persisted.append(batch.stream_id)
+
+    assert await supervise_recorded_messages(reader, Writer(), run_id="run", persist_events=persist) == 1
+    assert persisted == ["stream"]
     assert outgoing[0] == framed(SupervisorMessage(event_ack={
         "run_id": "run", "stream_id": "stream", "acked_through_sequence": 0,
     }))
@@ -116,5 +122,35 @@ async def test_supervisor_rejects_event_sequence_gap():
         ],
     })))
     reader.feed_eof()
+    async def persist(batch):
+        raise AssertionError("Invalid batches must never persist")
+
     with pytest.raises(IsolationUnavailable, match="sequence"):
-        await supervise_recorded_messages(reader, None, run_id="run")
+        await supervise_recorded_messages(reader, None, run_id="run", persist_events=persist)
+
+
+@pytest.mark.asyncio
+async def test_supervisor_never_acks_unpersisted_events():
+    reader = asyncio.StreamReader()
+    reader.feed_data(framed(RunnerMessage(emit_events={
+        "run_id": "run", "stream_id": "stream", "events": [
+            {"run_id": "run", "stream_id": "stream", "sequence": 0},
+        ],
+    })))
+    reader.feed_eof()
+    outgoing = []
+
+    class Writer:
+        def write(self, data):
+            outgoing.append(data)
+
+        async def drain(self):
+            pass
+
+    async def failed_persistence(batch):
+        raise RuntimeError("storage unavailable")
+
+    with pytest.raises(RuntimeError, match="storage unavailable"):
+        await supervise_recorded_messages(reader, Writer(), run_id="run",
+                                          persist_events=failed_persistence)
+    assert outgoing == []
