@@ -12,8 +12,8 @@ export function validateReplayConfig(config: ReplayConfig): string {
   if (!Number.isSafeInteger(config.maxModelCalls) || config.maxModelCalls < 1
       || config.maxModelCalls > 20) throw new Error("Model call budget exceeds policy");
   if (config.mode !== "recorded" && config.mode !== "live") throw new Error("Invalid model mode");
-  if (!config.runnerReady) throw new Error("Isolated runner is unavailable");
-  if (config.mode === "live" && (!config.liveAuthorized || !config.brokerReady)) {
+  if (config.runnerReady !== true) throw new Error("Isolated runner is unavailable");
+  if (config.mode === "live" && (config.liveAuthorized !== true || config.brokerReady !== true)) {
     throw new Error("Live inference requires explicit authorization and a verified broker");
   }
   return config.mode === "live" ? "Live models; production tools remain mocked"

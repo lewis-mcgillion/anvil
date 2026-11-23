@@ -25,3 +25,10 @@ test('unavailable runner and over-budget calls fail closed', () => {
   assert.throws(() => check({ ...recorded, runnerReady: false }), /runner is unavailable/);
   assert.throws(() => check({ ...recorded, maxModelCalls: 21 }), /budget exceeds policy/);
 });
+
+test('truthy nonboolean approvals cannot enable live inference', () => {
+  const approved = { ...recorded, mode: 'live', liveAuthorized: true, brokerReady: true };
+  assert.throws(() => check({ ...approved, liveAuthorized: 'yes' }), /explicit authorization/);
+  assert.throws(() => check({ ...approved, brokerReady: 1 }), /verified broker/);
+  assert.throws(() => check({ ...approved, runnerReady: 'yes' }), /runner is unavailable/);
+});
