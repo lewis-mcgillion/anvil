@@ -28,6 +28,25 @@ public contracts. Interface changes require schema and compatibility tests.
 
 Restore PostgreSQL into an isolated environment first, replay the forward
 migrations and compare recording archive hashes with the backed-up manifest.
+For a disposable database restore, keep credentials outside command history
+and use separate connection URLs supplied through environment files or a
+secret manager. A typical logical-backup sequence is:
+
+```sh
+pg_dump --format=custom --no-owner --no-acl --file=anvil.backup "$ANVIL_SOURCE_DATABASE_URL"
+createdb --maintenance-db="$ANVIL_ADMIN_DATABASE_URL" anvil_restore
+pg_restore --exit-on-error --no-owner --no-acl --dbname="$ANVIL_RESTORE_DATABASE_URL" anvil.backup
+```
+
+These commands require a **new, empty, disposable** restore database with
+matching PostgreSQL major version and installed extensions. Never point
+`ANVIL_RESTORE_DATABASE_URL` at production. Do not automatically reapply
+migrations already included in a logical backup: first inspect the restored
+schema and migration history. The `migrations/` directory contains several
+`0002_*.sql` files; numeric prefixes alone do not establish a safe upgrade
+order. Confirm the applied migration set and dependencies with the release
+operator before running any SQL. `pg_restore` success alone does not prove
+recording integrity, tenant isolation, RLS or suite replay correctness.
 Verify project RLS and authorization before pointing an API at restored data.
 Do not downgrade schema versions in place; use a verified backup/restore
 procedure. Run recorded fixture tests and compare immutable projection hashes
