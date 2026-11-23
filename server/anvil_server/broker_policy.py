@@ -189,8 +189,8 @@ async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, a
             return response
     except BrokerDenied:
         raise
-    except (OSError, asyncio.TimeoutError, ssl.SSLError, UnicodeError, ValueError, asyncio.IncompleteReadError, asyncio.LimitOverrunError) as error:
-        raise BrokerDenied("Model provider transport failed") from error
+    except (OSError, asyncio.TimeoutError, ssl.SSLError, UnicodeError, ValueError, asyncio.IncompleteReadError, asyncio.LimitOverrunError):
+        raise BrokerDenied("Model provider transport failed") from None
     finally:
         if writer is not None:
             writer.close()

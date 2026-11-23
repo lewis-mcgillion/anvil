@@ -352,3 +352,22 @@ async def test_live_broker_denies_oversize_prompt_before_dns(monkeypatch):
         await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
                                   credential="operator-secret", payload={"prompt": "too long"}, ledger=ledger)
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_live_broker_redacts_transport_exception_details(monkeypatch):
+    import asyncio
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint", lambda endpoint: asyncio.sleep(0, result=("8.8.8.8",)))
+
+    async def error_connection(*args, **kwargs):
+        raise OSError("secret-token-from-transport")
+
+    monkeypatch.setattr(asyncio, "open_connection", error_connection)
+    endpoint = "https://models.example.com/v1/responses"
+    with pytest.raises(BrokerDenied) as caught:
+        await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+                                  credential="secret-token-from-transport", payload={},
+                                  ledger=BudgetLedger(LiveBudget()))
+    assert "secret-token" not in str(caught.value)
+    assert caught.value.__suppress_context__
