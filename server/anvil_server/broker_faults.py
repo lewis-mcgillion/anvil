@@ -58,3 +58,21 @@ async def execute_broker_fault(
     if after_dispatch and fault.kind != "delay":
         raise InjectedBrokerFault(simulate_broker_fault(fault, dispatched=True))
     return result, simulate_broker_fault(fault, dispatched=True)
+
+
+async def retry_pre_dispatch_rate_limit(
+    fault: BrokerFault, dispatch: Callable[[], Awaitable[object]],
+    *, sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> tuple[object, BrokerFaultEvidence]:
+    """Wait for one simulated pre-dispatch throttle, then call the fake provider once."""
+    if fault.kind != "rate_limit":
+        raise ValueError("Only pre-dispatch rate limits can be retried safely")
+    await sleep(fault.retry_after_seconds)
+    result = await dispatch()
+    evidence = simulate_broker_fault(fault, dispatched=True)
+    return result, BrokerFaultEvidence(
+        kind=evidence.kind, pre_dispatch_calls=2,
+        dispatched_calls=1, charged_calls=1,
+        retry_after_seconds=evidence.retry_after_seconds,
+        simulated_delay_ms=0,
+    )

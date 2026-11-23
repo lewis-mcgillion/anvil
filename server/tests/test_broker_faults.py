@@ -1,6 +1,6 @@
 import pytest
 
-from anvil_server.broker_faults import BrokerFault, InjectedBrokerFault, execute_broker_fault, simulate_broker_fault
+from anvil_server.broker_faults import BrokerFault, InjectedBrokerFault, execute_broker_fault, retry_pre_dispatch_rate_limit, simulate_broker_fault
 
 
 @pytest.mark.parametrize("kind", ["rate_limit", "disconnect", "truncated_stream", "delay"])
@@ -64,3 +64,22 @@ async def test_fake_provider_delay_is_bounded_and_observable():
     assert response == "response"
     assert delays == [0.25]
     assert evidence.charged_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_after_waits_before_single_paid_dispatch():
+    events = []
+
+    async def sleep(seconds):
+        events.append(("wait", seconds))
+
+    async def provider():
+        events.append("dispatch")
+        return "ok"
+
+    result, evidence = await retry_pre_dispatch_rate_limit(
+        BrokerFault("rate_limit", retry_after_seconds=12), provider, sleep=sleep,
+    )
+    assert result == "ok"
+    assert events == [("wait", 12), "dispatch"]
+    assert (evidence.pre_dispatch_calls, evidence.dispatched_calls, evidence.charged_calls) == (2, 1, 1)
