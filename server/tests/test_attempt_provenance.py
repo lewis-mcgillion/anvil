@@ -25,6 +25,36 @@ def test_attempt_evidence_migration_enforces_project_isolation():
     assert "INSERT INTO schema_migrations (version) VALUES ('0008_attempt_evidence')" in migration
 
 
+@pytest.mark.asyncio
+async def test_persistence_insert_is_idempotent_and_project_scoped(monkeypatch):
+    from contextlib import asynccontextmanager
+    from uuid import UUID
+
+    captured = []
+
+    class Connection:
+        async def execute(self, statement, parameters):
+            captured.append((str(statement), parameters))
+
+    @asynccontextmanager
+    async def connection(engine, project_id):
+        captured.append(project_id)
+        yield Connection()
+
+    monkeypatch.setattr("anvil_server.attempt_provenance.project_connection", connection)
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    evidence = {"outcome": "succeeded"}
+    import hashlib
+    import json
+
+    evidence["sha256"] = hashlib.sha256(json.dumps(evidence, sort_keys=True,
+        separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+    await persist_evidence(None, identifier, identifier, identifier, evidence)
+    assert captured[0] == identifier
+    assert "ON CONFLICT (job_id, digest) DO NOTHING" in captured[1][0]
+    assert captured[1][1]["digest"] == evidence["sha256"]
+
+
 @pytest.mark.parametrize("key,value", [
     ("image_digest", "runner:latest"), ("model_mode", "implicit"),
     ("fixture_policy", "best_effort"), ("seed", -1),

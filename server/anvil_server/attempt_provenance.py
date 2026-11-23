@@ -45,6 +45,7 @@ async def persist_evidence(engine: AsyncEngine, project_id: UUID, job_id: UUID,
         await connection.execute(text("""
             INSERT INTO attempt_evidence (id, project_id, job_id, evidence, digest)
             VALUES (:id, :project, :job, CAST(:evidence AS jsonb), :digest)
+            ON CONFLICT (job_id, digest) DO NOTHING
         """), {"id": evidence_id, "project": project_id, "job": job_id,
                "evidence": serialized, "digest": evidence["sha256"]})
 
