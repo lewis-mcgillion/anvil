@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from anvil_server.broker_policy import BrokerDenied, BrokerThrottled, BudgetLedger, LiveBudget, admit_live_model, resolve_public_endpoint, dispatch_live_model
+from anvil_server.broker_policy import BrokerDenied, BrokerThrottled, BudgetLedger, LiveBudget, OperatorProfile, admit_live_model, resolve_public_endpoint, dispatch_live_model, dispatch_operator_profile
 
 
 def permitted(**changes):
@@ -70,6 +70,23 @@ def test_broker_rejects_invalid_provider_usage(usage):
             input_tokens=usage.get("input_tokens", 0),
             output_tokens=usage.get("output_tokens", 0),
             micro_usd=usage.get("cost_micro_usd", 0),
+        )
+
+
+@pytest.mark.asyncio
+async def test_operator_profile_rejects_unknown_or_unapproved_profiles():
+    ledger = BudgetLedger(LiveBudget())
+    with pytest.raises(BrokerDenied, match="identifier"):
+        await dispatch_operator_profile(profile_id="../unsafe", lookup=lambda _: None,
+                                        payload={}, ledger=ledger)
+    with pytest.raises(BrokerDenied, match="unavailable"):
+        await dispatch_operator_profile(profile_id="missing", lookup=lambda _: None,
+                                        payload={}, ledger=ledger)
+    with pytest.raises(BrokerDenied, match="opt-in"):
+        await dispatch_operator_profile(
+            profile_id="test", lookup=lambda _: OperatorProfile(
+                "https://models.example.com/v1/responses", "secret", False,
+            ), payload={}, ledger=ledger,
         )
 
 

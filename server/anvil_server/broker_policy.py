@@ -1,5 +1,8 @@
 """Static fail-closed admission checks for future live-model dispatch."""
 
+from __future__ import annotations
+
+from collections.abc import Callable
 from dataclasses import dataclass
 import asyncio
 import ipaddress
@@ -18,6 +21,30 @@ class BrokerThrottled(BrokerDenied):
     def __init__(self, retry_after_seconds: int | None):
         super().__init__("Model provider is throttling requests")
         self.retry_after_seconds = retry_after_seconds
+
+
+@dataclass(frozen=True)
+class OperatorProfile:
+    endpoint: str
+    credential: str
+    approved: bool
+
+
+async def dispatch_operator_profile(*, profile_id: str,
+                                    lookup: Callable[[str], OperatorProfile | None],
+                                    payload: dict, ledger: BudgetLedger) -> dict:
+    if not profile_id or not profile_id.isascii() or not all(
+        character.isalnum() or character in "-_" for character in profile_id
+    ):
+        raise BrokerDenied("Invalid operator profile identifier")
+    profile = lookup(profile_id)
+    if not isinstance(profile, OperatorProfile):
+        raise BrokerDenied("Approved operator profile is unavailable")
+    return await dispatch_live_model(
+        endpoint=profile.endpoint, profile_endpoint=profile.endpoint,
+        approved=profile.approved, credential=profile.credential,
+        payload=payload, ledger=ledger,
+    )
 
 
 @dataclass(frozen=True)
