@@ -1014,7 +1014,10 @@ async def test_an_audit_row_holds_no_prompt_or_token(engine):
             manifest = (await connection.execute(text("""
                 SELECT manifest FROM recordings WHERE project_id = :project AND id = :recording
             """), {"project": PROJECT, "recording": recording_id})).scalar_one()
-        assert response.json()["replay_eligibility"] == manifest.get("replay_eligibility", "ineligible")
+        expected = ("eligible" if response.json()["capture_state"] == "sealed_complete"
+                    and manifest.get("capture_completeness") == "sealed_complete"
+                    and manifest.get("replay_eligibility") == "eligible" else "ineligible")
+        assert response.json()["replay_eligibility"] == expected
     async with project_connection(engine, PROJECT) as connection:
         dumped = (await connection.execute(text("""
             SELECT coalesce(string_agg(to_jsonb(audit_events)::text, ' '), '')

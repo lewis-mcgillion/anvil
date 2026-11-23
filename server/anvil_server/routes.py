@@ -496,7 +496,10 @@ async def get_recording(request: Request, project_id: UUID, recording_id: UUID):
     return {"id": str(row["id"]), "run_id": str(row["run_id"]), "project_id": str(row["project_id"]),
             "capture_state": row["capture_status"], "manifest_hash": "sha256:" + row["sha256_hash"],
             "event_count": row["manifest"]["event_count"], "sealed_at": row["created_at"].isoformat(),
-            "replay_eligibility": row["manifest"].get("replay_eligibility", "ineligible")}
+            "replay_eligibility": ("eligible" if row["capture_status"] == "sealed_complete"
+                                   and row["manifest"].get("capture_completeness") == "sealed_complete"
+                                   and row["manifest"].get("replay_eligibility") == "eligible"
+                                   else "ineligible")}
 
 
 @router.get("/recordings/{recording_id}")
