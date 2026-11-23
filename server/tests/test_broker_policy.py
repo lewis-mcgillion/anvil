@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from anvil_server.broker_policy import BrokerDenied, LiveBudget, admit_live_model
+from anvil_server.broker_policy import BrokerDenied, BudgetLedger, LiveBudget, admit_live_model
 
 
 def permitted(**changes):
@@ -35,3 +35,24 @@ def test_approved_budgeted_endpoint_is_admitted():
 def test_disallowed_endpoint_opt_in_or_budget_fails_closed(changes):
     with pytest.raises(BrokerDenied):
         permitted(**changes)
+
+
+def test_broker_budget_ledger_accounts_and_rejects_overrun():
+    ledger = BudgetLedger(LiveBudget(model_calls=1, input_tokens=10, estimated_usd=0.5))
+    ledger.charge(model_calls=1, input_tokens=10, micro_usd=500_000)
+    with pytest.raises(BrokerDenied, match="exhausted"):
+        ledger.charge(model_calls=1)
+    assert ledger.model_calls == 1
+    with pytest.raises(BrokerDenied, match="nonnegative"):
+        ledger.charge(input_tokens=-1)
+
+
+def test_broker_budget_cancellation_and_expired_wall_time():
+    ledger = BudgetLedger(LiveBudget())
+    ledger.cancel()
+    with pytest.raises(BrokerDenied, match="cancelled"):
+        ledger.charge(model_calls=1)
+    expired = BudgetLedger(LiveBudget(wall_seconds=1))
+    expired.started -= 2
+    with pytest.raises(BrokerDenied, match="wall-time"):
+        expired.charge(model_calls=1)

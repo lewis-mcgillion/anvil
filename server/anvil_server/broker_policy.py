@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import ipaddress
+import time
 from urllib.parse import urlsplit
 
 
@@ -25,6 +26,41 @@ class LiveBudget:
             raise BrokerDenied("Live model budgets must be positive integers")
         if type(self.estimated_usd) not in {int, float} or not 0 < self.estimated_usd <= 1.0:
             raise BrokerDenied("Invalid live model spending budget")
+
+
+class BudgetLedger:
+    def __init__(self, budget: LiveBudget):
+        budget.validate()
+        self.budget = budget
+        self.started = time.monotonic()
+        self.model_calls = 0
+        self.tool_calls = 0
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.micro_usd = 0
+        self.cancelled = False
+
+    def charge(self, *, model_calls: int = 0, tool_calls: int = 0,
+               input_tokens: int = 0, output_tokens: int = 0, micro_usd: int = 0) -> None:
+        increments = (model_calls, tool_calls, input_tokens, output_tokens, micro_usd)
+        if any(type(value) is not int or value < 0 for value in increments):
+            raise BrokerDenied("Broker usage increments must be nonnegative integers")
+        if self.cancelled or time.monotonic() - self.started >= self.budget.wall_seconds:
+            raise BrokerDenied("Broker run cancelled or wall-time budget exhausted")
+        updated = tuple(current + increment for current, increment in zip(
+            (self.model_calls, self.tool_calls, self.input_tokens, self.output_tokens, self.micro_usd),
+            increments,
+        ))
+        limits = (self.budget.model_calls, self.budget.tool_calls,
+                  self.budget.input_tokens, self.budget.output_tokens,
+                  int(self.budget.estimated_usd * 1_000_000))
+        if any(value > limit for value, limit in zip(updated, limits)):
+            raise BrokerDenied("Broker budget exhausted")
+        (self.model_calls, self.tool_calls, self.input_tokens,
+         self.output_tokens, self.micro_usd) = updated
+
+    def cancel(self) -> None:
+        self.cancelled = True
 
 
 def admit_live_model(*, mode: str, approved: bool, profile_endpoint: str,
