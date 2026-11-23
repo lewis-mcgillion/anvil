@@ -17,6 +17,25 @@ class IsolationUnavailable(RuntimeError):
     pass
 
 
+def prepare_runner_socket_directory(path: Path) -> None:
+    if not path.is_absolute() or path.is_symlink() or path.exists():
+        raise IsolationUnavailable("Runner socket directory path must be new and absolute")
+    if path.parent.is_symlink() or not path.parent.is_dir():
+        raise IsolationUnavailable("Runner socket directory parent is invalid")
+    try:
+        path.mkdir(mode=0o700)
+        os.chown(path, 65534, 65534)
+        path.chmod(0o700)
+    except OSError as error:
+        try:
+            path.rmdir()
+        except OSError:
+            pass
+        raise IsolationUnavailable("Cannot provision sandbox-owned socket directory") from error
+    if path.stat().st_uid != 65534 or path.stat().st_gid != 65534:
+        raise IsolationUnavailable("Sandbox socket ownership verification failed")
+
+
 def verify_runner_image_config(config: dict) -> bool:
     if not isinstance(config, dict):
         raise IsolationUnavailable("Runner OCI image config is invalid")

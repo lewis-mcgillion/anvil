@@ -5,7 +5,7 @@ import socket
 
 import pytest
 
-from anvil_server.runner_policy import IsolationUnavailable, RunnerLaunch, container_arguments, supervise_container, verify_runner_image_config, verify_local_runner_image
+from anvil_server.runner_policy import IsolationUnavailable, RunnerLaunch, container_arguments, supervise_container, verify_runner_image_config, verify_local_runner_image, prepare_runner_socket_directory
 
 
 def safe_launch():
@@ -15,6 +15,22 @@ def safe_launch():
 
 def test_isolated_launch_policy_accepts_enforced_controls():
     safe_launch().validate()
+
+
+def test_socket_directory_provisioning_fails_without_owner_privileges(tmp_path, monkeypatch):
+    def denied(*args):
+        raise PermissionError("operation not permitted")
+
+    monkeypatch.setattr("anvil_server.runner_policy.os.chown", denied)
+    directory = tmp_path / "sandbox-uds"
+    with pytest.raises(IsolationUnavailable, match="Cannot provision"):
+        prepare_runner_socket_directory(directory)
+    assert not directory.exists()
+
+
+def test_socket_directory_provisioning_requires_new_path(tmp_path):
+    with pytest.raises(IsolationUnavailable, match="new and absolute"):
+        prepare_runner_socket_directory(tmp_path)
 
 
 def test_runner_image_rejects_credentials_ports_and_volumes():
