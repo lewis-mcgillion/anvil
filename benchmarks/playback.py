@@ -11,7 +11,7 @@ from pathlib import Path
 def measure_fixture(path: Path, repeats: int = 5) -> dict:
     from anvil_server.playback import project, projection_hash
 
-    if repeats < 1:
+    if type(repeats) is not int or not 1 <= repeats <= 100:
         raise ValueError("At least one measurement is required")
     fixture = json.loads(path.read_text())
     events = fixture["events"]
@@ -33,7 +33,8 @@ def measure_fixture(path: Path, repeats: int = 5) -> dict:
 def measure_generated(event_count: int = 10000, repeats: int = 5) -> dict:
     from anvil_server.playback import project, projection_hash
 
-    if not 1 <= event_count <= 100000 or repeats < 1:
+    if (type(event_count) is not int or not 1 <= event_count <= 100000
+            or type(repeats) is not int or not 1 <= repeats <= 100):
         raise ValueError("Invalid generated benchmark size or repeats")
     events = [{"event_id": f"00000000-0000-7000-8000-{index:012d}",
                "run_id": "00000000-0000-7000-8000-000000900001",

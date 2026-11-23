@@ -5,6 +5,12 @@ from benchmarks.playback import measure_fixture, measure_generated
 
 
 class PlaybackBenchmarkTests(unittest.TestCase):
+    def test_invalid_generated_measurement_limits_fail_closed(self):
+        for count, repeats in ((True, 1), (0, 1), (100001, 1),
+                               (10, True), (10, 0), (10, 101)):
+            with self.assertRaises(ValueError):
+                measure_generated(count, repeats)
+
     def test_generated_ten_thousand_event_projection(self):
         try:
             import anvil_server.playback
