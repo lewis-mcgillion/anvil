@@ -15,6 +15,16 @@ def test_candidate_attempt_requires_explicit_provenance():
     validate_attempt(sample())
 
 
+def test_attempt_evidence_migration_enforces_project_isolation():
+    from pathlib import Path
+
+    migration = (Path(__file__).parents[2] / "migrations/0008_attempt_evidence.sql").read_text()
+    assert "FOREIGN KEY (job_id, project_id) REFERENCES jobs (id, project_id)" in migration
+    assert "ALTER TABLE attempt_evidence FORCE ROW LEVEL SECURITY" in migration
+    assert "CREATE POLICY attempt_evidence_project_isolation" in migration
+    assert "INSERT INTO schema_migrations (version) VALUES ('0008_attempt_evidence')" in migration
+
+
 @pytest.mark.parametrize("key,value", [
     ("image_digest", "runner:latest"), ("model_mode", "implicit"),
     ("fixture_policy", "best_effort"), ("seed", -1),
