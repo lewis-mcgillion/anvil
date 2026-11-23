@@ -132,7 +132,8 @@ async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, a
             if not isinstance(usage, dict):
                 raise BrokerDenied("Model provider usage is invalid")
             ledger.charge(input_tokens=usage.get("input_tokens", 0),
-                          output_tokens=usage.get("output_tokens", 0))
+                          output_tokens=usage.get("output_tokens", 0),
+                          micro_usd=usage.get("cost_micro_usd", 0))
             return response
     except BrokerDenied:
         raise

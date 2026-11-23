@@ -61,6 +61,18 @@ def test_broker_budget_cancellation_and_expired_wall_time():
         expired.charge(model_calls=1)
 
 
+@pytest.mark.parametrize("usage", [
+    {"input_tokens": -1}, {"output_tokens": True}, {"cost_micro_usd": 1.5},
+])
+def test_broker_rejects_invalid_provider_usage(usage):
+    with pytest.raises(BrokerDenied, match="nonnegative"):
+        BudgetLedger(LiveBudget()).charge(
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            micro_usd=usage.get("cost_micro_usd", 0),
+        )
+
+
 @pytest.mark.asyncio
 async def test_broker_dns_only_accepts_public_addresses(monkeypatch):
     import asyncio
@@ -87,7 +99,7 @@ async def test_live_broker_pins_dns_and_accounts_provider_usage(monkeypatch):
 
     monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint", lambda endpoint: asyncio.sleep(0, result=("8.8.8.8",)))
     sent = []
-    response = json.dumps({"usage": {"input_tokens": 3, "output_tokens": 2}, "output": []}).encode()
+    response = json.dumps({"usage": {"input_tokens": 3, "output_tokens": 2, "cost_micro_usd": 100}, "output": []}).encode()
 
     class Writer:
         def write(self, data):
@@ -117,6 +129,7 @@ async def test_live_broker_pins_dns_and_accounts_provider_usage(monkeypatch):
                                        credential="operator-secret", payload={"model": "test"}, ledger=ledger)
     assert result["usage"]["input_tokens"] == 3
     assert (ledger.model_calls, ledger.input_tokens, ledger.output_tokens) == (1, 3, 2)
+    assert ledger.micro_usd == 100
     assert b"Authorization: Bearer operator-secret" in sent[0]
 
 
