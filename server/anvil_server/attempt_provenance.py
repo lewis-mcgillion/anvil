@@ -131,8 +131,11 @@ async def execute_attempt(
     failure = None
     try:
         async with asyncio.timeout(wall_seconds):
-            await execute()
-        outcome = "succeeded"
+            result = await execute()
+        if type(result) is int and result != 1:
+            failure = "runner_outcome"
+        else:
+            outcome = "succeeded"
     except asyncio.CancelledError:
         outcome = "cancelled"
     except TimeoutError:
