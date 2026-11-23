@@ -1,11 +1,18 @@
 import pytest
 
-from anvil_server.metric_labels import metric_counter
+from anvil_server.metric_labels import metric_counter, resource_gauge
 
 
 def test_metrics_have_fixed_nonsecret_label_sets():
     assert metric_counter(phase="ingest", outcome="failure", count=2) == (
         'anvil_operations_total{phase="ingest",outcome="failure"} 2\n')
+
+
+def test_resource_gauges_reject_dynamic_labels_and_invalid_values():
+    assert resource_gauge(resource="events", count=42) == 'anvil_resources{resource="events"} 42\n'
+    for resource, count in (("user-secret", 1), ("events", -1), ("events", True)):
+        with pytest.raises(ValueError):
+            resource_gauge(resource=resource, count=count)
 
 
 @pytest.mark.parametrize("field,value", [
