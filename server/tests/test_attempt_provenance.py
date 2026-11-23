@@ -194,3 +194,34 @@ async def test_load_evidence_rejects_stored_checksum_mismatch(monkeypatch):
     identifier = UUID("0199b167-0000-7000-8000-000000000011")
     with pytest.raises(InvalidAttempt, match="checksum mismatch"):
         await load_evidence(None, identifier, identifier, identifier)
+
+
+@pytest.mark.asyncio
+async def test_load_evidence_returns_verified_record(monkeypatch):
+    from contextlib import asynccontextmanager
+    from uuid import UUID
+    import hashlib
+    import json
+
+    evidence = {"outcome": "cancelled", "duration_ms": 12}
+    evidence["sha256"] = hashlib.sha256(json.dumps(evidence, sort_keys=True,
+        separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def first(self):
+            return {"evidence": evidence, "digest": evidence["sha256"]}
+
+    class Connection:
+        async def execute(self, statement, params):
+            return Result()
+
+    @asynccontextmanager
+    async def connection(engine, project_id):
+        yield Connection()
+
+    monkeypatch.setattr("anvil_server.attempt_provenance.project_connection", connection)
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    assert await load_evidence(None, identifier, identifier, identifier) == evidence
