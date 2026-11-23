@@ -258,6 +258,7 @@ async def test_isolated_runner_exit_before_handshake_fails_closed(tmp_path, monk
         pass
     monkeypatch.setattr("anvil_server.runner_supervisor.verify_local_runner_image", verified)
     monkeypatch.setattr("anvil_server.runner_supervisor._sandbox_owned", lambda path: True)
+    monkeypatch.setattr("anvil_server.runner_supervisor.os.chown", lambda *args: None)
     async def exited(*args, **kwargs):
         return 0
 
@@ -294,11 +295,33 @@ async def test_isolated_runner_requires_sandbox_owned_socket_directory(tmp_path,
 
 
 @pytest.mark.asyncio
+async def test_isolated_runner_cleans_socket_when_chown_is_denied(tmp_path, monkeypatch):
+    async def verified(launch):
+        pass
+
+    def denied(*args):
+        raise PermissionError("chown denied")
+
+    monkeypatch.setattr("anvil_server.runner_supervisor.verify_local_runner_image", verified)
+    monkeypatch.setattr("anvil_server.runner_supervisor._sandbox_owned", lambda path: True)
+    monkeypatch.setattr("anvil_server.runner_supervisor.os.chown", denied)
+    with pytest.raises(PermissionError, match="chown denied"):
+        await run_isolated_recorded_session(
+            None, tmp_path, tmp_path / "seccomp.json", adapter="google-adk",
+            config=SupervisorMessage(config={"run_id": "run"}),
+            fixtures=RecordedRunnerFixtures(FixtureSession([])),
+            persist_events=lambda batch: None,
+        )
+    assert not (tmp_path / "supervisor.sock").exists()
+
+
+@pytest.mark.asyncio
 async def test_isolated_runner_cancels_unfinished_connection_on_exit(tmp_path, monkeypatch):
     async def verified(launch):
         pass
     monkeypatch.setattr("anvil_server.runner_supervisor.verify_local_runner_image", verified)
     monkeypatch.setattr("anvil_server.runner_supervisor._sandbox_owned", lambda path: True)
+    monkeypatch.setattr("anvil_server.runner_supervisor.os.chown", lambda *args: None)
     connected = asyncio.Event()
 
     async def exited(*args, **kwargs):
@@ -356,6 +379,7 @@ async def test_isolated_runner_completes_socket_handshake(tmp_path, monkeypatch)
 
     monkeypatch.setattr("anvil_server.runner_supervisor.verify_local_runner_image", verified)
     monkeypatch.setattr("anvil_server.runner_supervisor._sandbox_owned", lambda path: True)
+    monkeypatch.setattr("anvil_server.runner_supervisor.os.chown", lambda *args: None)
     monkeypatch.setattr("anvil_server.runner_supervisor.supervise_container", container)
     assert await run_isolated_recorded_session(
         None, tmp_path, tmp_path / "seccomp.json", adapter="google-adk",

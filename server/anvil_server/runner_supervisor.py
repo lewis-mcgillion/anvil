@@ -1,6 +1,7 @@
 """Bounded, versioned protobuf handshake over the runner supervisor UDS."""
 
 import asyncio
+import os
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -186,6 +187,7 @@ async def run_isolated_recorded_session(
 
     server = await asyncio.start_unix_server(accept, path=str(socket_path))
     try:
+        os.chown(socket_path, 65534, 65534)
         socket_path.chmod(0o600)
         if not _sandbox_owned(socket_path):
             raise IsolationUnavailable("Runner socket must belong to sandbox identity")
