@@ -28,6 +28,7 @@ class RunnerLaunch:
     uds_only: bool
     host_mounts: tuple[str, ...] = ()
     inherited_secrets: tuple[str, ...] = ()
+    image_environment_verified: bool = False
 
     def validate(self) -> None:
         if not re.fullmatch(r"[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}", self.image):
@@ -37,6 +38,8 @@ class RunnerLaunch:
             raise IsolationUnavailable("Runner isolation controls are unavailable")
         if self.host_mounts or self.inherited_secrets:
             raise IsolationUnavailable("Runner must not inherit host mounts or secrets")
+        if self.image_environment_verified is not True:
+            raise IsolationUnavailable("Runner image environment must be verified secret-free")
 
 
 def container_arguments(launch: RunnerLaunch, socket_directory: Path, seccomp_profile: Path) -> tuple[str, ...]:
