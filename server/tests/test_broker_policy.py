@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from anvil_server.broker_policy import BrokerDenied, BudgetLedger, LiveBudget, admit_live_model, resolve_public_endpoint
+from anvil_server.broker_policy import BrokerDenied, BudgetLedger, LiveBudget, admit_live_model, resolve_public_endpoint, dispatch_live_model
 
 
 def permitted(**changes):
@@ -78,3 +78,75 @@ async def test_broker_dns_only_accepts_public_addresses(monkeypatch):
     monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", private_addresses)
     with pytest.raises(BrokerDenied, match="non-public"):
         await resolve_public_endpoint("https://models.example.com/v1/responses")
+
+
+@pytest.mark.asyncio
+async def test_live_broker_pins_dns_and_accounts_provider_usage(monkeypatch):
+    import asyncio
+    import json
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint", lambda endpoint: asyncio.sleep(0, result=("8.8.8.8",)))
+    sent = []
+    response = json.dumps({"usage": {"input_tokens": 3, "output_tokens": 2}, "output": []}).encode()
+
+    class Writer:
+        def write(self, data):
+            sent.append(data)
+
+        async def drain(self):
+            pass
+
+        def close(self):
+            pass
+
+        async def wait_closed(self):
+            pass
+
+    async def connect(host, port, **kwargs):
+        assert host == "8.8.8.8" and port == 443
+        assert kwargs["server_hostname"] == "models.example.com"
+        reader = asyncio.StreamReader()
+        reader.feed_data(f"HTTP/1.1 200 OK\r\nContent-Length: {len(response)}\r\n\r\n".encode() + response)
+        reader.feed_eof()
+        return reader, Writer()
+
+    monkeypatch.setattr(asyncio, "open_connection", connect)
+    endpoint = "https://models.example.com/v1/responses"
+    ledger = BudgetLedger(LiveBudget())
+    result = await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+                                       credential="operator-secret", payload={"model": "test"}, ledger=ledger)
+    assert result["usage"]["input_tokens"] == 3
+    assert (ledger.model_calls, ledger.input_tokens, ledger.output_tokens) == (1, 3, 2)
+    assert b"Authorization: Bearer operator-secret" in sent[0]
+
+
+@pytest.mark.asyncio
+async def test_live_broker_rejects_provider_redirect(monkeypatch):
+    import asyncio
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint", lambda endpoint: asyncio.sleep(0, result=("8.8.8.8",)))
+
+    class Writer:
+        def write(self, data):
+            pass
+
+        async def drain(self):
+            pass
+
+        def close(self):
+            pass
+
+        async def wait_closed(self):
+            pass
+
+    async def connect(*args, **kwargs):
+        reader = asyncio.StreamReader()
+        reader.feed_data(b"HTTP/1.1 302 Found\r\nLocation: https://attacker.example\r\nContent-Length: 0\r\n\r\n")
+        reader.feed_eof()
+        return reader, Writer()
+
+    monkeypatch.setattr(asyncio, "open_connection", connect)
+    endpoint = "https://models.example.com/v1/responses"
+    with pytest.raises(BrokerDenied, match="redirect"):
+        await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+                                  credential="operator-secret", payload={}, ledger=BudgetLedger(LiveBudget()))
