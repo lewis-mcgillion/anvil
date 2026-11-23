@@ -232,6 +232,11 @@ into an import.
   configuring both or using an empty file fails at startup. The file must
   be mounted with permissions limited to the API process. This does not
   enable OIDC authentication or replace the deployment's TLS requirements.
+  The OIDC JWKS verifier accepts only RS256 signatures from the caller's
+  explicitly trusted key set, rejects duplicate key IDs and unsafe JWT
+  headers, and validates issuer, audience, expiry and project identity after
+  signature verification. The deployment must provision and rotate trusted
+  JWKS data securely; this verifier is not yet wired into API authorization.
 - Deletion and export jobs operate within the caller's project graph only;
   cross-project references are rejected with precise error codes
   (ADR-0003).
