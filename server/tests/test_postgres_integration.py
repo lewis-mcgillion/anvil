@@ -1008,8 +1008,13 @@ async def test_an_audit_row_holds_no_prompt_or_token(engine):
     app.state.engine = engine
     headers = {"Authorization": f"Bearer {token}"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        assert (await client.get(f"/v1/projects/{PROJECT}/recordings/{recording_id}",
-                                 headers=headers)).status_code == 200
+        response = await client.get(f"/v1/projects/{PROJECT}/recordings/{recording_id}", headers=headers)
+        assert response.status_code == 200
+        async with project_connection(engine, PROJECT) as connection:
+            manifest = (await connection.execute(text("""
+                SELECT manifest FROM recordings WHERE project_id = :project AND id = :recording
+            """), {"project": PROJECT, "recording": recording_id})).scalar_one()
+        assert response.json()["replay_eligibility"] == manifest.get("replay_eligibility", "ineligible")
     async with project_connection(engine, PROJECT) as connection:
         dumped = (await connection.execute(text("""
             SELECT coalesce(string_agg(to_jsonb(audit_events)::text, ' '), '')

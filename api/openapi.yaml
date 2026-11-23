@@ -1556,6 +1556,10 @@ components:
         event_count:
           type: integer
           minimum: 0
+        replay_eligibility:
+          description: Eligibility evidence from the immutable recording manifest; absent legacy evidence is ineligible.
+          type: string
+          enum: [eligible, ineligible]
         sealed_at:
           type: string
           format: date-time

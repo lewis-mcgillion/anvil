@@ -4,6 +4,9 @@ Run list responses may include a nullable `recording_id` identifying the latest
 sealed recording associated with a run. Older clients can ignore this optional
 field; clients must not interpret its presence as proof of replay eligibility.
 Replay eligibility requires separately verified manifest evidence.
+Recording summary responses can now include `replay_eligibility` sourced from
+their immutable manifest; missing legacy evidence is reported as `ineligible`.
+Run summaries alone continue to establish no replay eligibility.
 
 Anvil's public contracts are:
 
