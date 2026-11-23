@@ -47,6 +47,11 @@ schema and migration history. The `migrations/` directory contains several
 order. Confirm the applied migration set and dependencies with the release
 operator before running any SQL. `pg_restore` success alone does not prove
 recording integrity, tenant isolation, RLS or suite replay correctness.
+Before restoration, verify the target hostname and database name independently
+against the disposable environment inventory; do not infer safety from a
+variable named `ANVIL_RESTORE_DATABASE_URL`. The restore operator must verify
+the target is empty and has no production application clients. Stop rather
+than overwrite or use `--clean` when the database is populated.
 Verify project RLS and authorization before pointing an API at restored data.
 Do not downgrade schema versions in place; use a verified backup/restore
 procedure. Run recorded fixture tests and compare immutable projection hashes
