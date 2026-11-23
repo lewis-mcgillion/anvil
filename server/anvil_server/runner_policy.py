@@ -63,6 +63,8 @@ def container_arguments(launch: RunnerLaunch, socket_directory: Path, seccomp_pr
         raise IsolationUnavailable("Runner socket must be accessible to the sandbox identity")
     return (
         "docker", "run", "--rm", "--network=none", "--read-only", "--cap-drop=ALL",
+        "--ipc=private", "--pid=private", "--uts=private", "--cgroupns=private",
+        "--env=PATH=/usr/bin:/bin",
         "--security-opt=no-new-privileges", f"--security-opt=seccomp={seccomp_profile}",
         "--pids-limit=64", "--memory=512m", "--cpus=1", "--user=65534:65534",
         "--env=HOME=/tmp", "--tmpfs=/tmp:rw,noexec,nosuid,size=16m",

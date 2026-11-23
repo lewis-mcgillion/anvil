@@ -54,6 +54,9 @@ def test_container_arguments_enforce_isolation(tmp_path):
         assert "--cap-drop=ALL" in arguments
         assert "--read-only" in arguments
         assert "--user=65534:65534" in arguments
+        assert "--pid=private" in arguments
+        assert "--ipc=private" in arguments
+        assert "--network=none" in arguments
         assert arguments[-1] == safe_launch().image
 
 
