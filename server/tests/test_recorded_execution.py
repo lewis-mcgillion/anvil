@@ -118,3 +118,16 @@ async def test_recorded_agent_timeout_closes_session():
         await execute_recorded_session(session, agent, timeout_seconds=0.001)
     with pytest.raises(ReplayError):
         session.finish()
+
+
+@pytest.mark.asyncio
+async def test_invalid_timeout_never_leaves_replay_session_open():
+    session = FixtureSession([])
+
+    async def agent(fixtures):
+        raise AssertionError("Agent must not run")
+
+    with pytest.raises(ValueError, match="timeout"):
+        await execute_recorded_session(session, agent, timeout_seconds=0)
+    with pytest.raises(ReplayError):
+        session.finish()

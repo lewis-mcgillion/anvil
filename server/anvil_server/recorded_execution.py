@@ -10,9 +10,9 @@ async def execute_recorded_session(
     session: FixtureSession, agent: Callable[[FixtureSession], Awaitable[None]],
     *, timeout_seconds: float = 120,
 ) -> dict:
-    if timeout_seconds <= 0:
-        raise ValueError("Recorded execution timeout must be positive")
     try:
+        if timeout_seconds <= 0:
+            raise ValueError("Recorded execution timeout must be positive")
         async with asyncio.timeout(timeout_seconds):
             await agent(session)
         return session.finish()
