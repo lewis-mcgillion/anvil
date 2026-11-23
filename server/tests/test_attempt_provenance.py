@@ -127,6 +127,23 @@ async def test_attempt_rejects_boolean_false_result():
 
 
 @pytest.mark.asyncio
+async def test_attempt_rejects_boolean_true_as_runner_evidence():
+    sealed = []
+
+    async def runner():
+        return True
+
+    async def seal(evidence):
+        sealed.append(evidence)
+
+    evidence = await execute_attempt(sample(), runner, seal)
+    assert evidence["outcome"] == "failed"
+    assert evidence["failure_code"] == "runner_outcome"
+    assert verify_evidence(evidence)
+    assert sealed == [evidence]
+
+
+@pytest.mark.asyncio
 async def test_attempt_seals_resource_accounting_and_rejects_invalid_counters():
     sealed = []
 
