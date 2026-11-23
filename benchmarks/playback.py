@@ -8,10 +8,9 @@ import sys
 import time
 from pathlib import Path
 
-from anvil_server.playback import project, projection_hash
-
-
 def measure_fixture(path: Path, repeats: int = 5) -> dict:
+    from anvil_server.playback import project, projection_hash
+
     if repeats < 1:
         raise ValueError("At least one measurement is required")
     fixture = json.loads(path.read_text())

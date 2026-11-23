@@ -6,6 +6,10 @@ from benchmarks.playback import measure_fixture
 
 class PlaybackBenchmarkTests(unittest.TestCase):
     def test_benchmark_checks_correctness_and_reports_raw_samples(self):
+        try:
+            import anvil_server.playback
+        except ModuleNotFoundError:
+            self.skipTest("Anvil server is not installed in the SDK-only test environment")
         fixture = Path(__file__).resolve().parents[1] / "fixtures/conformance/v1/retries.json"
         result = measure_fixture(fixture, repeats=2)
         self.assertEqual(len(result["samples_ns"]), 2)
