@@ -19,3 +19,16 @@ class BackupVerifyTests(unittest.TestCase):
     def test_missing_restore_fails_closed(self):
         with self.assertRaises(ValueError):
             verify_restore({"recording.anvil": "a" * 64}, [])
+
+    def test_large_archive_hashes_without_unbounded_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "large.anvil"
+            archive.write_bytes(b"evidence" * 400000)
+            expected = recording_hashes([archive])
+            verify_restore(expected, [archive])
+
+    def test_invalid_manifest_paths_and_hashes_are_rejected(self):
+        for name, digest in (("../recording.anvil", "a" * 64),
+                             ("recording.anvil", "invalid"), ("recording.txt", "a" * 64)):
+            with self.assertRaises(ValueError):
+                verify_restore({name: digest}, [])
