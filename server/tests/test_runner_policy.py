@@ -106,6 +106,7 @@ def test_container_arguments_enforce_isolation(tmp_path):
             monkeypatch.setattr(type(directory), "stat", stat_as_sandbox_identity)
             arguments = container_arguments(safe_launch(), directory, profile)
         assert "--network=none" in arguments
+        assert "--pull=never" in arguments
         assert "--cap-drop=ALL" in arguments
         assert "--read-only" in arguments
         assert "--user=65534:65534" in arguments
