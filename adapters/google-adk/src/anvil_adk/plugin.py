@@ -127,6 +127,8 @@ class CapturePlugin(BasePlugin):
         self, *, callback_context: CallbackContext, llm_response: LlmResponse,
     ) -> None:
         key = self._key(callback_context)
+        if key not in self._models or key not in self._chunks:
+            raise Ineligible("model response has no unambiguous pending request")
         response = llm_response.model_dump(mode="json", exclude_none=True)
         if llm_response.partial:
             index = self._chunks[key]

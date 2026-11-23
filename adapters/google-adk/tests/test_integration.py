@@ -306,6 +306,23 @@ async def test_overlapping_identical_model_calls_fail_with_explicit_ambiguity():
     assert not plugin._models and not plugin._chunks
 
 
+async def test_unmatched_streaming_callback_is_explicitly_ineligible():
+    from unittest.mock import Mock
+
+    class Context:
+        invocation_id = "missing-invocation"
+        branch = "branch"
+        agent_name = "agent"
+        function_call_id = None
+
+    plugin = CapturePlugin(lambda *event: None)
+    response = Mock(spec=LlmResponse)
+    response.partial = True
+    with pytest.raises(Ineligible, match="no unambiguous pending request"):
+        await plugin.after_model_callback(callback_context=Context(), llm_response=response)
+    assert not plugin._models and not plugin._chunks
+
+
 @pytest.mark.parametrize("bad", [
     object(), b"pickle", (1, 2), {1: "not a string key"}, {"x": float("nan")},
     {"x": float("inf")}, {"x": object()},
