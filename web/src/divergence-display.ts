@@ -6,8 +6,16 @@ export type DivergenceEvidence = {
 };
 
 export function divergenceDisplay(evidence: DivergenceEvidence) {
-  const baseline = evidence.baseline === undefined ? "Evidence missing" : JSON.stringify(evidence.baseline);
-  const candidate = evidence.candidate === undefined ? "Evidence missing" : JSON.stringify(evidence.candidate);
+  const serialize = (value: unknown): string => {
+    if (value === undefined) return "Evidence missing";
+    try {
+      return JSON.stringify(value) ?? "Evidence unavailable";
+    } catch {
+      return "Evidence unavailable";
+    }
+  };
+  const baseline = serialize(evidence.baseline);
+  const candidate = serialize(evidence.candidate);
   return {
     baseline,
     candidate,

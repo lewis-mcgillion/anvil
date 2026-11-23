@@ -24,3 +24,12 @@ test('malicious payload remains inert serialized text', () => {
   assert.ok(value.baseline.includes(attack));
   assert.notEqual(value.baseline, value.candidate);
 });
+
+test('unserializable evidence is never presented as a matching branch', () => {
+  const cyclic = {};
+  cyclic.self = cyclic;
+  const value = display({ baseline: cyclic, candidate: { safe: true } });
+  assert.equal(value.baseline, 'Evidence unavailable');
+  assert.notEqual(value.baseline, value.candidate);
+  assert.equal(value.alignment, 'missing');
+});
