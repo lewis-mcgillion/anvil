@@ -5,7 +5,7 @@ import socket
 
 import pytest
 
-from anvil_server.runner_policy import IsolationUnavailable, RunnerLaunch, container_arguments, supervise_container
+from anvil_server.runner_policy import IsolationUnavailable, RunnerLaunch, container_arguments, supervise_container, verify_runner_image_config
 
 
 def safe_launch():
@@ -15,6 +15,15 @@ def safe_launch():
 
 def test_isolated_launch_policy_accepts_enforced_controls():
     safe_launch().validate()
+
+
+def test_runner_image_rejects_credentials_ports_and_volumes():
+    assert verify_runner_image_config({"config": {"Env": ["PATH=/usr/bin", "HOME=/tmp"]}})
+    for config in ({"config": {"Env": ["API_KEY=secret"]}},
+                   {"config": {"Env": [], "ExposedPorts": {"443/tcp": {}}}},
+                   {"config": {"Env": [], "Volumes": {"/host": {}}}}):
+        with pytest.raises(IsolationUnavailable):
+            verify_runner_image_config(config)
 
 
 @pytest.mark.parametrize("control", ["network_disabled", "read_only_root", "no_new_privileges",

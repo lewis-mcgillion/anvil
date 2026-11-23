@@ -17,6 +17,24 @@ class IsolationUnavailable(RuntimeError):
     pass
 
 
+def verify_runner_image_config(config: dict) -> bool:
+    if not isinstance(config, dict):
+        raise IsolationUnavailable("Runner OCI image config is invalid")
+    settings = config.get("config")
+    if not isinstance(settings, dict):
+        raise IsolationUnavailable("Runner OCI image settings are missing")
+    variables = settings.get("Env", [])
+    if not isinstance(variables, list) or any(
+        not isinstance(variable, str) or "=" not in variable
+        or variable.split("=", 1)[0].upper() not in {"PATH", "HOME", "LANG", "TZ"}
+        for variable in variables
+    ):
+        raise IsolationUnavailable("Runner image environment contains unapproved variables")
+    if settings.get("Volumes") or settings.get("ExposedPorts"):
+        raise IsolationUnavailable("Runner image declares forbidden volumes or ports")
+    return True
+
+
 @dataclass(frozen=True)
 class RunnerLaunch:
     image: str
