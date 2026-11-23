@@ -20,3 +20,10 @@ isolated supervisor, live broker and complete Compose deployment are not
 implemented. A table of expectations is not evidence they pass; do not
 promote this checklist to a release gate until actual logs and metrics from
 automated drills have been collected.
+
+After collecting real synthetic-environment logs, create a JSON inventory with
+one entry per drill: `drill`, `passed`, `revision`, `platform`, `evidence_path`,
+`orphan_runners`, and `peak_memory_bytes`. Run
+`python scripts/verify_failure_drills.py <inventory.json>` to reject missing,
+failed, duplicate or unbounded results. This structural check does not verify
+the contents of external logs or replace manual review of drill evidence.
