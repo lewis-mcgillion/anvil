@@ -20,3 +20,10 @@ class OTelTests(unittest.TestCase):
     def test_malformed_span_ids_fail_closed(self):
         with self.assertRaises(ValueError):
             map_span({"trace_id": "not-a-trace", "span_id": "1" * 16})
+
+    def test_malformed_parent_and_attributes_fail_closed(self):
+        span = {"trace_id": "a" * 32, "span_id": "b" * 16}
+        for invalid in ({"parent_span_id": "bad"}, {"attributes": ["not", "a", "mapping"]},
+                        {"context": "not a mapping"}):
+            with self.assertRaises(ValueError):
+                map_span(span | invalid)
