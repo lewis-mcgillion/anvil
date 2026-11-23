@@ -151,3 +151,25 @@ async def test_invalid_timeout_never_leaves_replay_session_open():
         await execute_recorded_session(session, agent, timeout_seconds=0)
     with pytest.raises(ReplayError):
         session.finish()
+
+
+@pytest.mark.asyncio
+async def test_agent_error_cancels_recorded_session():
+    session = FixtureSession([])
+    cancelled = []
+    original_cancel = session.cancel
+
+    def cancel():
+        cancelled.append(True)
+        original_cancel()
+
+    session.cancel = cancel
+
+    async def agent(fixtures):
+        raise RuntimeError("agent failed")
+
+    with pytest.raises(RuntimeError, match="agent failed"):
+        await execute_recorded_session(session, agent)
+    assert cancelled == [True]
+    with pytest.raises(ReplayError):
+        session.finish()

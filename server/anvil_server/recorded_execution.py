@@ -16,10 +16,7 @@ async def execute_recorded_session(
         async with asyncio.timeout(timeout_seconds):
             await agent(session)
         return session.finish()
-    except asyncio.CancelledError:
-        session.cancel()
-        raise
-    except TimeoutError:
+    except BaseException:
         session.cancel()
         raise
     finally:
