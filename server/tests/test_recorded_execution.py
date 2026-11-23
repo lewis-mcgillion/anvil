@@ -56,3 +56,20 @@ async def test_changed_model_prompt_aborts_without_provider_fallback():
     assert error.value.code == "FIXTURE_MISMATCH"
     with pytest.raises(ReplayError):
         session.finish()
+
+
+@pytest.mark.asyncio
+async def test_unrecorded_tool_request_never_reaches_original_tool():
+    session = FixtureSession([])
+    executed = []
+
+    async def agent(fixtures):
+        fixtures.resolve(request_id="tool", kind="tool", path=("root",), ordinal=0,
+                         request={"tool_name": "production.write", "schema_digest": "sha256:" + "a" * 64,
+                                  "arguments": {"data": "private"}})
+        executed.append("production tool executed")
+
+    with pytest.raises(ReplayError) as error:
+        await execute_recorded_session(session, agent)
+    assert error.value.code == "FIXTURE_MISSING"
+    assert executed == []
