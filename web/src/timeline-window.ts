@@ -4,7 +4,9 @@ export function timelineWindow(total: number, scrollTop: number, rowHeight: numb
                                viewportHeight: number, overscan = 8): TimelineWindow {
   if (![total, scrollTop, rowHeight, viewportHeight, overscan].every(Number.isFinite)
       || !Number.isInteger(total) || total < 0 || scrollTop < 0 || rowHeight <= 0
-      || viewportHeight < 0 || !Number.isInteger(overscan) || overscan < 0) {
+      || viewportHeight < 0 || !Number.isInteger(overscan) || overscan < 0
+      || !Number.isSafeInteger(total * rowHeight)
+      || !Number.isSafeInteger(Math.ceil(viewportHeight / rowHeight) + 2 * overscan)) {
     throw new Error("Invalid timeline viewport");
   }
   const visible = Math.ceil(viewportHeight / rowHeight);

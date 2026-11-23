@@ -20,6 +20,8 @@ test('10k events render only a bounded viewport', () => {
 test('invalid scroll and geometry fail explicitly', () => {
   assert.throws(() => windowFor(10000, -1, 25, 500));
   assert.throws(() => windowFor(10000, 1, 0, 500));
+  assert.throws(() => windowFor(10000, 1, Number.MAX_VALUE, 500));
+  assert.throws(() => windowFor(10000, 1, 25, Number.MAX_VALUE));
 });
 
 test('last event stays visible at the bottom of a long timeline', () => {
