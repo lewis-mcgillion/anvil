@@ -94,7 +94,7 @@ function ProjectOverview({ projects, client }: { projects: Project[]; client: Re
         capture_status: run.capture_state, execution_outcome: run.execution_state,
       })}</span></li>)}</ul>
     {nextCursor && <button disabled={loadingRuns} onClick={() => setCursor(nextCursor)}>Load more runs</button>}
-    <p>Replay eligibility requires sealed recording evidence; run summaries alone cannot establish it. This page never executes agent code.</p>
+    <p role="note">Replay eligibility is not verified by run summaries. A sealed recording manifest is required before any run can be considered replay-eligible. This dashboard never executes agent code.</p>
   </Page>;
 }
 

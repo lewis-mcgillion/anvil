@@ -37,6 +37,7 @@ test("project runs filter by agent identity and capture state", async ({ page })
   await page.getByRole("link", { name: "Alpha", exact: true }).click();
   await expect(page.getByText("Inventory", { exact: true })).toBeVisible();
   await expect(page.getByText("Billing", { exact: true })).toBeVisible();
+  await expect(page.getByRole("note")).toContainText("Replay eligibility is not verified");
   await page.getByLabel("Filter runs by agent or ID").fill("inventory");
   await expect(page.getByText("Billing", { exact: true })).toHaveCount(0);
   await page.getByLabel("Filter runs by agent or ID").fill("");
