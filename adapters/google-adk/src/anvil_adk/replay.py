@@ -69,9 +69,12 @@ class ReplayTool(BaseTool):
         return self._declaration.model_copy(deep=True)
 
     async def run_async(self, *, args: dict[str, Any], tool_context: ToolContext) -> dict[str, Any]:
+        arguments = json_value(args)
+        if type(arguments) is not dict:
+            raise Ineligible("tool arguments must be an explicit object")
         result = json_value(await self._resolver.tool(
             self.name, self._declaration.model_dump(mode="json", exclude_none=True),
-            json_value(args),
+            arguments,
             {
                 "adk_invocation_id": tool_context.invocation_id,
                 "branch": tool_context.branch or "",

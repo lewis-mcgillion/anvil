@@ -391,6 +391,16 @@ async def test_invalid_tool_resolver_result_is_rejected(result):
         ]))
 
 
+async def test_replay_tool_rejects_nonobject_arguments_before_resolver():
+    class Fatal(FixtureResolver):
+        async def tool(self, *args):
+            raise AssertionError("resolver must not receive malformed arguments")
+
+    tool = ReplayTool(declaration={"name": "lookup"}, resolver=Fatal())
+    with pytest.raises(Ineligible, match="tool arguments must be an explicit object"):
+        await tool.run_async(args=["not an object"], tool_context=None)
+
+
 async def test_streaming_replay_is_explicitly_rejected():
     with pytest.raises(Ineligible, match="streaming"):
         await execute(
