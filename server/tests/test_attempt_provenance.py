@@ -1,6 +1,6 @@
 import pytest
 
-from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt, verify_evidence, persist_evidence, load_evidence, run_leased_attempt, run_persisted_attempt
+from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt, verify_evidence, persist_evidence, load_evidence, run_leased_attempt, run_persisted_attempt, validate_registered_agent
 
 
 def sample():
@@ -342,3 +342,30 @@ async def test_persisted_attempt_does_not_complete_job_when_seal_fails(monkeypat
         await run_persisted_attempt(None, Queue(), identifier, identifier,
                                     identifier, sample(), run)
     assert completed == []
+
+
+@pytest.mark.asyncio
+async def test_registered_agent_must_match_candidate_manifest(monkeypatch):
+    from contextlib import asynccontextmanager
+    from uuid import UUID
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def first(self):
+            return {"image": "unexpected", "adapter": "google-adk", "adapter_version": "0.1.0"}
+
+    class Connection:
+        async def execute(self, statement, params):
+            assert "project_id = :project" in str(statement)
+            return Result()
+
+    @asynccontextmanager
+    async def connection(engine, project_id):
+        yield Connection()
+
+    monkeypatch.setattr("anvil_server.attempt_provenance.project_connection", connection)
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    with pytest.raises(InvalidAttempt, match="registered"):
+        await validate_registered_agent(None, identifier, identifier, sample())

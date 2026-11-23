@@ -69,6 +69,22 @@ async def load_evidence(engine: AsyncEngine, project_id: UUID, job_id: UUID,
     return evidence
 
 
+async def validate_registered_agent(engine: AsyncEngine, project_id: UUID,
+                                    agent_version_id: UUID, details: Mapping[str, object]) -> None:
+    validate_attempt(details)
+    if not isinstance(agent_version_id, UUID):
+        raise InvalidAttempt("Candidate agent identity must be a UUID")
+    async with project_connection(engine, project_id) as connection:
+        row = (await connection.execute(text("""
+            SELECT image, adapter, adapter_version FROM agent_versions
+            WHERE project_id = :project AND id = :agent
+        """), {"project": project_id, "agent": agent_version_id})).mappings().first()
+    if row is None or any((row["image"] != details["image_digest"],
+                           row["adapter"] != details["adapter"],
+                           row["adapter_version"] != details["adapter_version"])):
+        raise InvalidAttempt("Candidate does not match a registered project agent version")
+
+
 _DIGEST = re.compile(r"[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}")
 _REQUIRED = frozenset({"reexecution_id", "recording_id", "agent_version_id",
                        "image_digest", "adapter", "adapter_version", "model_mode",
