@@ -18,6 +18,8 @@ def validate_project_claims(claims: Mapping[str, object], *, issuer: str,
             or claims.get("iss") != issuer or type(permitted_audiences) is not list
             or audience not in permitted_audiences or any(type(item) is not str for item in permitted_audiences)
             or not permitted_audiences
+            or (len(permitted_audiences) > 1 and claims.get("azp") != audience)
+            or ("azp" in claims and claims["azp"] != audience)
             or type(claims.get("exp")) is not int or claims["exp"] <= current.timestamp()
             or ("nbf" in claims and (type(claims["nbf"]) is not int or claims["nbf"] > current.timestamp()))
             or ("iat" in claims and (type(claims["iat"]) is not int or claims["iat"] > current.timestamp()))

@@ -36,3 +36,17 @@ def test_non_https_issuer_configuration_denied():
     with pytest.raises(IdentityDenied):
         validate_project_claims(claims(), issuer="http://identity.example.com",
                                 audience="anvil-api", project_id="project-a", now=NOW)
+
+
+def test_multiple_audiences_require_matching_authorized_party():
+    multiple = claims() | {"aud": ["anvil-api", "other-service"]}
+    with pytest.raises(IdentityDenied):
+        check(multiple)
+    with pytest.raises(IdentityDenied):
+        check(multiple | {"azp": "other-service"})
+    assert check(multiple | {"azp": "anvil-api"}) == "user-1"
+
+
+def test_single_audience_rejects_conflicting_authorized_party():
+    with pytest.raises(IdentityDenied):
+        check(claims() | {"azp": "other-service"})
