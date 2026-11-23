@@ -388,3 +388,46 @@ async def test_isolated_runner_completes_socket_handshake(tmp_path, monkeypatch)
         timeout_seconds=2,
     ) == 1
     assert not (tmp_path / "supervisor.sock").exists()
+
+
+@pytest.mark.asyncio
+async def test_isolated_runner_rejects_container_failure_after_successful_protocol(tmp_path, monkeypatch):
+    async def verified(launch):
+        pass
+
+    async def receive(reader):
+        size = int.from_bytes(await reader.readexactly(4), "big")
+        return SupervisorMessage.FromString(await reader.readexactly(size))
+
+    async def container(*args, **kwargs):
+        reader, writer = await asyncio.open_unix_connection(tmp_path / "supervisor.sock")
+        try:
+            writer.write(framed(RunnerMessage(hello={
+                "protocol_version": "1", "runner_version": "1.0",
+                "adapter": "google-adk", "adapter_version": "2.0",
+            })))
+            await writer.drain()
+            await receive(reader)
+            writer.write(framed(RunnerMessage(finished={"outcome": 1})))
+            await writer.drain()
+            await receive(reader)
+        finally:
+            writer.close()
+            await writer.wait_closed()
+        raise IsolationUnavailable("container failed after protocol")
+
+    async def persist(batch):
+        pytest.fail("Unexpected event batch")
+
+    monkeypatch.setattr("anvil_server.runner_supervisor.verify_local_runner_image", verified)
+    monkeypatch.setattr("anvil_server.runner_supervisor._sandbox_owned", lambda path: True)
+    monkeypatch.setattr("anvil_server.runner_supervisor.os.chown", lambda *args: None)
+    monkeypatch.setattr("anvil_server.runner_supervisor.supervise_container", container)
+    with pytest.raises(IsolationUnavailable, match="container failed after protocol"):
+        await run_isolated_recorded_session(
+            None, tmp_path, tmp_path / "seccomp.json", adapter="google-adk",
+            config=SupervisorMessage(config={"run_id": "run", "attempt_id": "attempt"}),
+            fixtures=RecordedRunnerFixtures(FixtureSession([])), persist_events=persist,
+            timeout_seconds=2,
+        )
+    assert not (tmp_path / "supervisor.sock").exists()
