@@ -149,12 +149,15 @@ async def run_isolated_recorded_session(
         raise IsolationUnavailable("Runner supervisor socket path already exists")
     session_result = asyncio.get_running_loop().create_future()
     accepted = False
+    connection_tasks: set[asyncio.Task] = set()
 
     async def accept(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         nonlocal accepted
+        connection_tasks.add(asyncio.current_task())
         if accepted:
             writer.close()
             await writer.wait_closed()
+            connection_tasks.discard(asyncio.current_task())
             return
         accepted = True
         try:
@@ -170,6 +173,7 @@ async def run_isolated_recorded_session(
         finally:
             writer.close()
             await writer.wait_closed()
+            connection_tasks.discard(asyncio.current_task())
 
     server = await asyncio.start_unix_server(accept, path=str(socket_path))
     container_task = None
@@ -199,6 +203,12 @@ async def run_isolated_recorded_session(
                 await container_task
             except asyncio.CancelledError:
                 pass
+        for task in connection_tasks:
+            task.cancel()
+        if connection_tasks:
+            await asyncio.gather(*connection_tasks, return_exceptions=True)
+        if not session_result.done():
+            session_result.cancel()
         if session_result.done() and not session_result.cancelled():
             session_result.exception() if session_result.exception() is not None else None
         socket_path.unlink(missing_ok=True)

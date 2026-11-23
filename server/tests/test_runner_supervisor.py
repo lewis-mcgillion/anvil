@@ -269,3 +269,31 @@ async def test_isolated_runner_exit_before_handshake_fails_closed(tmp_path, monk
                                             fixtures=RecordedRunnerFixtures(FixtureSession([])),
                                             persist_events=persist, timeout_seconds=1)
     assert not (tmp_path / "supervisor.sock").exists()
+
+
+@pytest.mark.asyncio
+async def test_isolated_runner_cancels_unfinished_connection_on_exit(tmp_path, monkeypatch):
+    connected = asyncio.Event()
+
+    async def exited(*args, **kwargs):
+        reader, writer = await asyncio.open_unix_connection(tmp_path / "supervisor.sock")
+        connected.set()
+        await asyncio.sleep(0)
+        writer.close()
+        await writer.wait_closed()
+        return 0
+
+    monkeypatch.setattr("anvil_server.runner_supervisor.supervise_container", exited)
+
+    async def persist(batch):
+        pass
+
+    with pytest.raises(IsolationUnavailable, match="without supervisor completion|protobuf frame is invalid"):
+        await run_isolated_recorded_session(
+            None, tmp_path, tmp_path / "seccomp.json", adapter="google-adk",
+            config=SupervisorMessage(config={"run_id": "run", "attempt_id": "attempt"}),
+            fixtures=RecordedRunnerFixtures(FixtureSession([])),
+            persist_events=persist, timeout_seconds=1,
+        )
+    assert connected.is_set()
+    assert not (tmp_path / "supervisor.sock").exists()
