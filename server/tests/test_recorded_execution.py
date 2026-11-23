@@ -105,3 +105,16 @@ async def test_recorded_agent_consumes_model_fixture_without_provider():
     evidence = await execute_recorded_session(session, agent)
     assert evidence["provider_calls"] == 0
     assert evidence["consumed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_recorded_agent_timeout_closes_session():
+    session = FixtureSession([])
+
+    async def agent(fixtures):
+        await asyncio.Future()
+
+    with pytest.raises(TimeoutError):
+        await execute_recorded_session(session, agent, timeout_seconds=0.001)
+    with pytest.raises(ReplayError):
+        session.finish()
