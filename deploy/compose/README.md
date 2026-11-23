@@ -19,6 +19,11 @@ done
 docker compose up -d --build api
 ```
 
+Start the dashboard with `docker compose up -d --build web` and open
+`http://127.0.0.1:3000`. Its `/v1/` requests proxy to the private Compose API;
+the dashboard does not embed API credentials. Both exposed ports bind only to
+loopback. This is a local development deployment, not a public TLS endpoint.
+
 Do not rerun these commands against an existing database without inspecting
 `schema_migrations` and confirming the required upgrade path. The mounted
 migration directory is read-only. The worker requires an explicitly
