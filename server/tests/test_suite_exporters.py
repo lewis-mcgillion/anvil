@@ -23,6 +23,13 @@ def test_reports_reject_unknown_status():
             exporter([{"name": "unsafe", "status": "unknown"}])
 
 
+@pytest.mark.parametrize("name", ["", "invalid\x00name", "invalid\x1fname", "invalid\uffffname"])
+def test_reports_reject_invalid_xml_case_names(name):
+    for exporter in (export_json, export_junit, export_markdown):
+        with pytest.raises(ValueError, match="Invalid suite case"):
+            exporter([{"name": name, "status": "pass"}])
+
+
 @pytest.mark.parametrize("format,expected", [
     ("json", '"status":"fail"'),
     ("junit", 'failures="1"'),

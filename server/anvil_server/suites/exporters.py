@@ -8,6 +8,10 @@ from collections.abc import Sequence
 def _validate(cases: Sequence[dict]) -> None:
     for case in cases:
         if (type(case) is not dict or type(case.get("name")) is not str
+                or not case["name"] or any(
+                    ord(character) < 32 and character not in "\t\n\r"
+                    or ord(character) in (0xFFFE, 0xFFFF)
+                    for character in case["name"])
                 or case.get("status") not in {"pass", "fail", "inconclusive", "error", "cancelled"}):
             raise ValueError("Invalid suite case report")
 
