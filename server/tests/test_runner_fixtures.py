@@ -3,7 +3,7 @@ import json
 import pytest
 
 from anvil_server.replay.fixtures import Fixture, FixtureSession
-from anvil_server.runner_fixtures import RecordedToolResolver, RecordedModelResolver
+from anvil_server.runner_fixtures import RecordedToolResolver, RecordedModelResolver, RecordedRunnerFixtures
 from anvil_server.runner_pb2 import RunnerMessage
 from anvil_server.runner_policy import IsolationUnavailable
 
@@ -69,3 +69,23 @@ async def test_recorded_model_resolver_rejects_changed_prompt():
     session = FixtureSession([model_fixture()])
     with pytest.raises(IsolationUnavailable, match="did not match"):
         await RecordedModelResolver(session)(model_request("changed"))
+
+
+@pytest.mark.asyncio
+async def test_recorded_runner_fixtures_share_model_and_tool_ordinals():
+    fixture = model_fixture()
+    tool_fixture = Fixture.create(kind="tool", path=("root",), ordinal=1,
+                                  request={"tool_name": "inventory.lookup", "schema_digest": "sha256:" + "a" * 64,
+                                           "arguments": {"sku": "1"}},
+                                  response={"status": "completed", "result": {"available": True}})
+    session = RecordedRunnerFixtures(FixtureSession([fixture, tool_fixture]))
+    await session.resolve_model(model_request("hello"))
+    await session.resolve_tool(request({"sku": "1"}))
+    await session.finalize()
+
+
+@pytest.mark.asyncio
+async def test_recorded_runner_rejects_incomplete_fixture_consumption():
+    session = RecordedRunnerFixtures(FixtureSession([model_fixture()]))
+    with pytest.raises(IsolationUnavailable, match="unconsumed"):
+        await session.finalize()

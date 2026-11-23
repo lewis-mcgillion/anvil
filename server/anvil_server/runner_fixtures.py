@@ -9,9 +9,9 @@ from .runner_policy import IsolationUnavailable
 
 
 class RecordedToolResolver:
-    def __init__(self, fixtures: FixtureSession):
+    def __init__(self, fixtures: FixtureSession, ordinals: dict[str, int] | None = None):
         self.fixtures = fixtures
-        self.ordinals: dict[str, int] = defaultdict(int)
+        self.ordinals = ordinals if ordinals is not None else defaultdict(int)
 
     async def __call__(self, request) -> SupervisorMessage:
         if not request.invocation_id or not request.request_id:
@@ -37,9 +37,9 @@ class RecordedToolResolver:
 
 
 class RecordedModelResolver:
-    def __init__(self, fixtures: FixtureSession):
+    def __init__(self, fixtures: FixtureSession, ordinals: dict[str, int] | None = None):
         self.fixtures = fixtures
-        self.ordinals: dict[str, int] = defaultdict(int)
+        self.ordinals = ordinals if ordinals is not None else defaultdict(int)
 
     async def __call__(self, request) -> SupervisorMessage:
         if not request.invocation_id or not request.request_id:
@@ -81,3 +81,17 @@ class RecordedModelResolver:
                            "output_tokens": response["output_tokens"]},
             })
         raise IsolationUnavailable("Recorded model error requires explicit mediation")
+
+
+class RecordedRunnerFixtures:
+    def __init__(self, fixtures: FixtureSession):
+        self.fixtures = fixtures
+        ordinals: dict[str, int] = defaultdict(int)
+        self.resolve_model = RecordedModelResolver(fixtures, ordinals)
+        self.resolve_tool = RecordedToolResolver(fixtures, ordinals)
+
+    async def finalize(self) -> None:
+        try:
+            self.fixtures.finish()
+        except ReplayError as error:
+            raise IsolationUnavailable("Runner left recorded fixtures unconsumed") from error
