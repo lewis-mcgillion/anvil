@@ -753,9 +753,7 @@ async def list_events(request: Request, project_id: UUID, run_id: UUID, limit: i
     filters = {"run": str(run_id), "stream": str(stream_id) if stream_id else "", "type": type or ""}
     try:
         after = json.loads(codec.decode(cursor, "events", str(project_id), filters)) if cursor else None
-        if after is not None and (not isinstance(after, list) or len(after) != 3):
-            raise ValueError("Invalid cursor position")
-        position = [str(UUID(after[0])), int(after[1]), str(UUID(after[2]))] if after else None
+        position = event_cursor_position(after) if after is not None else None
     except (ValueError, TypeError):
         return failure(request, 400, "invalid_cursor")
     async with project_connection(engine, project_id) as connection:
@@ -791,6 +789,14 @@ async def list_events(request: Request, project_id: UUID, run_id: UUID, limit: i
         str(rows[limit - 1]["stream_id"]), rows[limit - 1]["sequence"], str(rows[limit - 1]["event_id"])]),
                                filters) if len(rows) > limit else None
     return {"items": items, "next_cursor": next_cursor}
+
+
+def event_cursor_position(after: object) -> list[str | int]:
+    if (not isinstance(after, list) or len(after) != 3
+            or not isinstance(after[1], int) or isinstance(after[1], bool)
+            or after[1] < 0):
+        raise ValueError("Invalid cursor position")
+    return [str(UUID(after[0])), after[1], str(UUID(after[2]))]
 
 
 @router.get("/runs/{run_id}/events")
