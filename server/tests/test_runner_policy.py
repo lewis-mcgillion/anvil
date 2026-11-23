@@ -138,3 +138,21 @@ async def test_supervisor_kills_timed_out_runner(tmp_path, monkeypatch):
         with pytest.raises(IsolationUnavailable, match="timed out"):
             await supervise_container(safe_launch(), directory, profile, timeout_seconds=0.001)
     assert killed == [4242]
+
+
+@pytest.mark.asyncio
+async def test_supervisor_rejects_nonzero_container_exit(tmp_path, monkeypatch):
+    monkeypatch.setattr("anvil_server.runner_policy.container_arguments", lambda *args: ("docker", "run", "image"))
+
+    class FailedProcess:
+        returncode = 125
+
+        async def wait(self):
+            return self.returncode
+
+    async def fake_spawn(*args, **kwargs):
+        return FailedProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_spawn)
+    with pytest.raises(IsolationUnavailable, match="125"):
+        await supervise_container(safe_launch(), tmp_path, tmp_path)

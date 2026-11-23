@@ -82,7 +82,10 @@ async def supervise_container(
             raise IsolationUnavailable("Container runtime is unavailable") from error
         try:
             try:
-                return await asyncio.wait_for(process.wait(), timeout_seconds)
+                return_code = await asyncio.wait_for(process.wait(), timeout_seconds)
+                if return_code != 0:
+                    raise IsolationUnavailable(f"Runner container exited unsuccessfully ({return_code})")
+                return return_code
             except asyncio.TimeoutError as error:
                 raise IsolationUnavailable("Runner execution timed out") from error
         finally:
