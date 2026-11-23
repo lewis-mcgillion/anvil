@@ -1,6 +1,7 @@
 """Deterministic aggregation that cannot turn missing case evidence into a pass."""
 
 import asyncio
+import math
 from collections.abc import Awaitable, Callable
 from collections.abc import Sequence
 from typing import Literal
@@ -25,8 +26,12 @@ async def execute_suite_cases(
     *, parallelism: int = 1, timeout_seconds: float = 120,
     max_attempts: int = 1,
 ) -> dict[str, CaseStatus]:
-    if (parallelism < 1 or parallelism > 32 or len(cases) != len(set(cases))
-            or timeout_seconds <= 0 or max_attempts < 1 or max_attempts > 3):
+    if (type(parallelism) is not int or not 1 <= parallelism <= 32
+            or type(max_attempts) is not int or not 1 <= max_attempts <= 3
+            or type(timeout_seconds) not in (int, float)
+            or not math.isfinite(timeout_seconds) or timeout_seconds <= 0
+            or any(type(case_id) is not str or not case_id for case_id in cases)
+            or len(cases) != len(set(cases))):
         raise ValueError("Invalid suite parallelism, deadline, retries or case identity")
     semaphore = asyncio.Semaphore(parallelism)
     results: dict[str, CaseStatus] = {}

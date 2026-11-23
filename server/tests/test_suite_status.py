@@ -20,6 +20,21 @@ def test_unknown_case_status_never_passes():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("cases,options", [
+    (["case"], {"parallelism": True}), (["case"], {"max_attempts": True}),
+    (["case"], {"timeout_seconds": float("inf")}),
+    (["case"], {"timeout_seconds": float("nan")}),
+    ([""], {}), ([None], {}),
+])
+async def test_suite_rejects_invalid_execution_configuration(cases, options):
+    async def execute(case_id):
+        raise AssertionError("Invalid cases must never execute")
+
+    with pytest.raises(ValueError, match="Invalid suite"):
+        await execute_suite_cases(cases, execute, **options)
+
+
+@pytest.mark.asyncio
 async def test_suite_cases_respect_parallelism_and_independent_results():
     import asyncio
 
