@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import re
+import asyncio
+import os
+import signal
+import tempfile
 from pathlib import Path
 import stat
 from dataclasses import dataclass
@@ -54,3 +58,44 @@ def container_arguments(launch: RunnerLaunch, socket_directory: Path, seccomp_pr
         f"--mount=type=bind,src={socket_directory},dst=/run/anvil,readonly",
         launch.image,
     )
+
+
+async def supervise_container(
+    launch: RunnerLaunch, socket_directory: Path, seccomp_profile: Path, *, timeout_seconds: float = 60
+) -> int:
+    if timeout_seconds <= 0:
+        raise IsolationUnavailable("Runner timeout must be positive")
+    arguments = container_arguments(launch, socket_directory, seccomp_profile)
+    with tempfile.TemporaryDirectory(prefix="anvil-runner-") as temporary_directory:
+        container_id_file = Path(temporary_directory) / "container-id"
+        command = (*arguments[:2], f"--cidfile={container_id_file}", *arguments[2:])
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL, env={"PATH": os.defpath}, start_new_session=True,
+            )
+        except OSError as error:
+            raise IsolationUnavailable("Container runtime is unavailable") from error
+        try:
+            try:
+                return await asyncio.wait_for(process.wait(), timeout_seconds)
+            except asyncio.TimeoutError as error:
+                raise IsolationUnavailable("Runner execution timed out") from error
+        finally:
+            if process.returncode is None:
+                os.killpg(process.pid, signal.SIGKILL)
+            await asyncio.shield(process.wait())
+            if container_id_file.exists():
+                container_id = container_id_file.read_text().strip()
+                if re.fullmatch(r"[0-9a-f]{64}", container_id):
+                    try:
+                        cleanup = await asyncio.create_subprocess_exec(
+                            "docker", "rm", "--force", container_id,
+                            stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
+                            stderr=asyncio.subprocess.DEVNULL, env={"PATH": os.defpath},
+                        )
+                        await asyncio.shield(cleanup.wait())
+                    except OSError as error:
+                        raise IsolationUnavailable("Runner container cleanup unavailable") from error
+                    if cleanup.returncode != 0:
+                        raise IsolationUnavailable("Runner container cleanup failed")

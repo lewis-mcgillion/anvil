@@ -1,9 +1,10 @@
 from dataclasses import replace
+import asyncio
 import socket
 
 import pytest
 
-from anvil_server.runner_policy import IsolationUnavailable, RunnerLaunch, container_arguments
+from anvil_server.runner_policy import IsolationUnavailable, RunnerLaunch, container_arguments, supervise_container
 
 
 def safe_launch():
@@ -58,3 +59,25 @@ def test_container_arguments_reject_missing_socket_and_unsafe_paths(tmp_path):
         directory.chmod(0o777)
         with pytest.raises(IsolationUnavailable, match="writable"):
             container_arguments(safe_launch(), directory, profile)
+
+
+@pytest.mark.asyncio
+async def test_supervisor_rejects_invalid_budget_before_launch(tmp_path):
+    with pytest.raises(IsolationUnavailable, match="timeout"):
+        await supervise_container(safe_launch(), tmp_path, tmp_path, timeout_seconds=0)
+
+
+@pytest.mark.asyncio
+async def test_supervisor_fails_closed_without_runtime(tmp_path, monkeypatch):
+    directory = tmp_path / "uds"
+    directory.mkdir(mode=0o700)
+    profile = tmp_path / "seccomp.json"
+    profile.write_text("{}")
+    profile.chmod(0o600)
+    async def missing_runtime(*args, **kwargs):
+        raise FileNotFoundError("docker")
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", missing_runtime)
+    with socket.socket(socket.AF_UNIX) as supervisor:
+        supervisor.bind(str(directory / "supervisor.sock"))
+        with pytest.raises(IsolationUnavailable, match="runtime"):
+            await supervise_container(safe_launch(), directory, profile)
