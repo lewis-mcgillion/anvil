@@ -1,6 +1,6 @@
 import pytest
 
-from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt
+from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt, verify_evidence
 
 
 def sample():
@@ -47,6 +47,10 @@ async def test_attempt_seals_success_and_runner_failure():
     assert (await execute_attempt(sample(), failure, seal))["failure_code"] == "runner_error"
     assert len(sealed) == 2
     assert "sensitive internals" not in str(sealed)
+    assert len(sealed[0]["sha256"]) == 64
+    assert verify_evidence(sealed[0])
+    changed = {**sealed[0], "outcome": "failed"}
+    assert not verify_evidence(changed)
 
 
 @pytest.mark.asyncio

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 import asyncio
+import hashlib
+import json
 import time
 from collections.abc import Mapping
 from collections.abc import Awaitable, Callable
@@ -11,6 +13,19 @@ from collections.abc import Awaitable, Callable
 
 class InvalidAttempt(ValueError):
     pass
+
+
+def verify_evidence(evidence: Mapping[str, object]) -> bool:
+    digest = evidence.get("sha256")
+    if type(digest) is not str or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        return False
+    try:
+        canonical = json.dumps({key: value for key, value in evidence.items() if key != "sha256"},
+                               sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                               allow_nan=False).encode("utf-8")
+    except (TypeError, ValueError):
+        return False
+    return hashlib.sha256(canonical).hexdigest() == digest
 
 
 _DIGEST = re.compile(r"[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}")
@@ -70,6 +85,12 @@ async def execute_attempt(
     evidence = {"provenance": dict(details), "outcome": outcome,
                 "duration_ms": max(0, int((time.monotonic() - started) * 1000)),
                 "failure_code": failure}
+    try:
+        canonical = json.dumps(evidence, sort_keys=True, separators=(",", ":"),
+                               ensure_ascii=False, allow_nan=False).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise InvalidAttempt("Candidate evidence is not serializable") from error
+    evidence["sha256"] = hashlib.sha256(canonical).hexdigest()
     sealing = asyncio.create_task(seal(evidence))
     while not sealing.done():
         try:
