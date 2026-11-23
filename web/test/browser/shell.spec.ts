@@ -1,6 +1,38 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+test("comparison findings escape injection and keep judge results separate", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  const comparisonId = "0199b167-0000-7000-8000-000000000021";
+  let writes = 0;
+  await page.route("**/v1/**", (route) => {
+    if (route.request().method() !== "GET") writes++;
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/projects")) return route.fulfill({ json: { items: [project], next_cursor: null } });
+    if (path.endsWith("/divergences")) return route.fulfill({ json: { items: [
+      { id: project.id, category: "changed_tool_args", summary: "<img src=x onerror=alert(1)>",
+        evidence_event_ids: [project.id] },
+      { id: comparisonId, category: "ambiguous_alignment", summary: "Missing branch",
+        evidence_event_ids: [] },
+    ], next_cursor: null } });
+    return route.fulfill({ json: { id: comparisonId, status: "succeeded", deterministic: "fail",
+      judge: "not_run", infrastructure: "ok", alignment_confidence: "ambiguous" } });
+  });
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Comparison ID").fill(comparisonId);
+  await page.getByRole("button", { name: "Inspect comparison" }).click();
+  await expect(page.getByText("Deterministic: fail")).toBeVisible();
+  await expect(page.getByText("Judge: not_run")).toBeVisible();
+  await expect(page.getByText("Missing branch")).toBeVisible();
+  await expect(page.getByText("<img src=x onerror=alert(1)>")).toBeVisible();
+  expect(await page.locator("img").count()).toBe(0);
+  expect(writes).toBe(0);
+});
+
 const first = {
   id: "0199b167-0000-7000-8000-000000000011",
   name: "Alpha",
