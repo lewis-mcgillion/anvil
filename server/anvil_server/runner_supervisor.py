@@ -2,7 +2,7 @@
 
 import asyncio
 
-from .runner_pb2 import RunnerMessage, SupervisorMessage
+from .runner_pb2 import RunnerMessage, SupervisorMessage, RUN_OUTCOME_UNSPECIFIED
 from .runner_policy import IsolationUnavailable
 
 
@@ -45,3 +45,17 @@ async def handshake(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                 or not hello.hello.adapter_version):
             raise IsolationUnavailable("Runner protocol or adapter handshake mismatch")
         await write_supervisor_message(writer, config)
+
+
+async def receive_terminal_outcome(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
+                                   *, timeout_seconds: float = 60) -> int:
+    if timeout_seconds <= 0:
+        raise IsolationUnavailable("Supervisor terminal deadline must be positive")
+    async with asyncio.timeout(timeout_seconds):
+        message = await read_runner_message(reader)
+        if message.WhichOneof("message") != "finished":
+            raise IsolationUnavailable("Runner requested unsupported supervisor action")
+        if message.finished.outcome == RUN_OUTCOME_UNSPECIFIED:
+            raise IsolationUnavailable("Runner reported unspecified terminal outcome")
+        await write_supervisor_message(writer, SupervisorMessage(finished={}))
+        return message.finished.outcome

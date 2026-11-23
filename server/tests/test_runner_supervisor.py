@@ -4,7 +4,7 @@ import pytest
 
 from anvil_server.runner_pb2 import RunnerMessage, SupervisorMessage
 from anvil_server.runner_policy import IsolationUnavailable
-from anvil_server.runner_supervisor import handshake, read_runner_message
+from anvil_server.runner_supervisor import handshake, read_runner_message, receive_terminal_outcome
 
 
 def framed(message):
@@ -53,3 +53,30 @@ async def test_runner_message_rejects_large_or_truncated_frames():
     truncated.feed_eof()
     with pytest.raises(IsolationUnavailable, match="invalid"):
         await read_runner_message(truncated)
+
+
+@pytest.mark.asyncio
+async def test_runner_terminal_session_acknowledges_completion():
+    reader = asyncio.StreamReader()
+    reader.feed_data(framed(RunnerMessage(finished={"outcome": 1})))
+    reader.feed_eof()
+    outgoing = []
+
+    class Writer:
+        def write(self, data):
+            outgoing.append(data)
+
+        async def drain(self):
+            pass
+
+    assert await receive_terminal_outcome(reader, Writer()) == 1
+    assert outgoing == [framed(SupervisorMessage(finished={}))]
+
+
+@pytest.mark.asyncio
+async def test_runner_terminal_session_rejects_unsolicited_tool_request():
+    reader = asyncio.StreamReader()
+    reader.feed_data(framed(RunnerMessage(tool_request={"request_id": "unauthorized"})))
+    reader.feed_eof()
+    with pytest.raises(IsolationUnavailable, match="unsupported"):
+        await receive_terminal_outcome(reader, None)
