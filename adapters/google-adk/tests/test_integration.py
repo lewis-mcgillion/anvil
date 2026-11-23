@@ -320,6 +320,17 @@ def test_unsupported_version_rejected(monkeypatch, installed):
         ReplayTool(declaration={"name": "lookup"}, resolver=FixtureResolver())
 
 
+def test_missing_adk_distribution_rejected_explicitly(monkeypatch):
+    from importlib.metadata import PackageNotFoundError
+
+    def missing(_):
+        raise PackageNotFoundError("google-adk")
+
+    monkeypatch.setattr("anvil_adk.version", missing)
+    with pytest.raises(Ineligible, match="google-adk 2.13.0 is required"):
+        CapturePlugin(lambda *event: None)
+
+
 async def test_real_session_reconstructed_from_explicit_snapshot():
     from google.adk.tools.tool_context import ToolContext
 
