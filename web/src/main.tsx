@@ -58,13 +58,17 @@ function ProjectOverview({ projects, client, token }: { projects: Project[]; cli
   const [verifiedRecording, setVerifiedRecording] = useState<string>();
   const [recordingEligibility, setRecordingEligibility] = useState<string>();
   const [recordingError, setRecordingError] = useState<string>();
+  const [eligibilityScope, setEligibilityScope] = useState<string>();
   useEffect(() => {
     if (!project || !verifiedRecording) return;
     const controller = new AbortController();
     setRecordingEligibility(undefined);
     setRecordingError(undefined);
     readRecording(client, controller.signal, project.id, verifiedRecording).then((recording) => {
-      if (!controller.signal.aborted) setRecordingEligibility(recording.replay_eligibility);
+      if (!controller.signal.aborted) {
+        setRecordingEligibility(recording.replay_eligibility);
+        setEligibilityScope(`${project.id}:${recording.id}`);
+      }
     }).catch((error: unknown) => {
       if (!controller.signal.aborted) setRecordingError(error instanceof Error ? error.message : "Recording unavailable");
     });
@@ -125,7 +129,7 @@ function ProjectOverview({ projects, client, token }: { projects: Project[]; cli
         capture_status: run.capture_state, execution_outcome: run.execution_state,
       })}</span> {run.recording_id && <span>Recording: <code>{run.recording_id}</code>
         <button onClick={() => setVerifiedRecording(run.recording_id ?? undefined)}>Check recording eligibility</button>
-        {verifiedRecording === run.recording_id && recordingEligibility &&
+        {eligibilityScope === `${project.id}:${run.recording_id}` && recordingEligibility &&
           <span> Manifest replay eligibility: {recordingEligibility}</span>}
         {verifiedRecording === run.recording_id && recordingError && <span role="alert">{recordingError}</span>}
       </span>}
