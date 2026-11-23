@@ -27,6 +27,7 @@ from .identifiers import new_uuid7
 from .database import project_connection
 from .events import Conflict, Event, MAX_RUN_BYTES
 from .jobs import JobQueue, LeaseLost
+from .metric_labels import resource_gauge
 from .pagination import CursorCodec
 from .security import AccessDenied, Unauthenticated, authorize
 
@@ -80,7 +81,7 @@ async def project_metrics(request: Request, project_id: UUID | None = None):
                 {"project": project_id})).scalar_one()
     exposition = "# TYPE anvil_resources gauge\n"
     for resource, count in counts.items():
-        exposition += f'anvil_resources{{resource="{resource}"}} {count}\n'
+        exposition += resource_gauge(resource=resource, count=count)
     return Response(content=exposition, media_type="text/plain; version=0.0.4")
 
 
