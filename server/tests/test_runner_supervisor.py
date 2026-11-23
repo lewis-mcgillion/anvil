@@ -431,3 +431,58 @@ async def test_isolated_runner_rejects_container_failure_after_successful_protoc
             timeout_seconds=2,
         )
     assert not (tmp_path / "supervisor.sock").exists()
+
+
+@pytest.mark.asyncio
+async def test_isolated_runner_acknowledges_events_only_after_persistence(tmp_path, monkeypatch):
+    persisted = asyncio.Event()
+
+    async def verified(launch):
+        pass
+
+    async def receive(reader):
+        size = int.from_bytes(await reader.readexactly(4), "big")
+        return SupervisorMessage.FromString(await reader.readexactly(size))
+
+    async def container(*args, **kwargs):
+        reader, writer = await asyncio.open_unix_connection(tmp_path / "supervisor.sock")
+        try:
+            writer.write(framed(RunnerMessage(hello={
+                "protocol_version": "1", "runner_version": "1.0",
+                "adapter": "google-adk", "adapter_version": "2.0",
+            })))
+            await writer.drain()
+            assert (await receive(reader)).WhichOneof("message") == "config"
+            writer.write(framed(RunnerMessage(emit_events={
+                "run_id": "run", "stream_id": "stream", "events": [{
+                    "run_id": "run", "stream_id": "stream", "sequence": 0,
+                }],
+            })))
+            await writer.drain()
+            ack_task = asyncio.create_task(receive(reader))
+            await asyncio.sleep(0.02)
+            assert not ack_task.done()
+            persisted.set()
+            ack = await asyncio.wait_for(ack_task, 1)
+            assert ack.event_ack.acked_through_sequence == 0
+            writer.write(framed(RunnerMessage(finished={"outcome": 1})))
+            await writer.drain()
+            assert (await receive(reader)).WhichOneof("message") == "finished"
+        finally:
+            writer.close()
+            await writer.wait_closed()
+        return 0
+
+    async def persist(batch):
+        await persisted.wait()
+
+    monkeypatch.setattr("anvil_server.runner_supervisor.verify_local_runner_image", verified)
+    monkeypatch.setattr("anvil_server.runner_supervisor._sandbox_owned", lambda path: True)
+    monkeypatch.setattr("anvil_server.runner_supervisor.os.chown", lambda *args: None)
+    monkeypatch.setattr("anvil_server.runner_supervisor.supervise_container", container)
+    assert await run_isolated_recorded_session(
+        None, tmp_path, tmp_path / "seccomp.json", adapter="google-adk",
+        config=SupervisorMessage(config={"run_id": "run", "attempt_id": "attempt"}),
+        fixtures=RecordedRunnerFixtures(FixtureSession([])), persist_events=persist,
+        timeout_seconds=2,
+    ) == 1
