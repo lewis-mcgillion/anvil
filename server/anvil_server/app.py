@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
 from .database import engine_for, project_connection
+from .secret_files import deployment_secret
 from .http_security import SecurityMiddleware
 from .bundles import MAX_BUNDLE
 from .playback import (
@@ -60,7 +61,7 @@ class ProjectCreate(BaseModel):
 async def lifespan(application: FastAPI):
     database_url = os.getenv("ANVIL_DATABASE_URL")
     application.state.engine = engine_for(database_url) if database_url else None
-    cursor_secret = os.getenv("ANVIL_CURSOR_SECRET")
+    cursor_secret = deployment_secret("ANVIL_CURSOR_SECRET")
     application.state.cursor_secret = cursor_secret.encode() if cursor_secret and len(cursor_secret) >= 16 else None
     try:
         yield

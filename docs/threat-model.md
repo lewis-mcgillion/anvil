@@ -227,6 +227,11 @@ into an import.
 - Self-hosted deployments require TLS, OIDC-mapped identities, scoped
   keys, and hardened templates; local installs bind to loopback only
   (ADR-0002).
+  Operators may supply the API cursor signing secret through an absolute
+  `ANVIL_CURSOR_SECRET_FILE` mount instead of `ANVIL_CURSOR_SECRET`;
+  configuring both or using an empty file fails at startup. The file must
+  be mounted with permissions limited to the API process. This does not
+  enable OIDC authentication or replace the deployment's TLS requirements.
 - Deletion and export jobs operate within the caller's project graph only;
   cross-project references are rejected with precise error codes
   (ADR-0003).
