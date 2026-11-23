@@ -209,7 +209,8 @@ test("safe text rendering, no execution requests and automated accessibility", a
   await expect(page.locator("img")).toHaveCount(0);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(apiRequests.length).toBeGreaterThan(0);
-  expect(apiRequests.every((request) => request === "GET /v1/projects")).toBe(true);
+  expect(apiRequests.every((request) =>
+    request === "GET /v1/projects" || request === "GET /v1/runs")).toBe(true);
 });
 
 test("empty keys do not submit and keys are never sent through redirects", async ({ page }) => {
