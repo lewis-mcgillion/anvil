@@ -33,7 +33,13 @@ export async function watchRunEvents(token: string, projectId: string, runId: st
         const frame = buffer.slice(0, boundary);
         buffer = buffer.slice(boundary + 2);
         if (frame.length > 1024 * 1024) throw new Error("The event stream exceeded its frame limit.");
-        if (!signal.aborted && frame.split("\n").some((line) => line.startsWith("data:"))) onEvent();
+        const data = frame.split("\n").filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart()).join("\n");
+        if (data && !signal.aborted) {
+          try { JSON.parse(data); }
+          catch { throw new Error("The event stream contained invalid JSON evidence."); }
+          onEvent();
+        }
         boundary = buffer.indexOf("\n\n");
       }
       if (buffer.length > 1024 * 1024) throw new Error("The event stream exceeded its frame limit.");
