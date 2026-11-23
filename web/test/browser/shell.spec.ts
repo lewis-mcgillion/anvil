@@ -281,7 +281,7 @@ test("a later load does not steal focus from the reader", async ({ page }) => {
   await page.getByRole("button", { name: "Load more projects" }).dispatchEvent("click");
 
   // The reader keeps focus once the project page renders again.
-  await expect(page.locator("option")).toHaveCount(3);
+  await expect(selector.locator("option")).toHaveCount(3);
   await expect(selector).toBeFocused();
   await expect(page.getByRole("heading", { name: "Alpha", exact: true })).not.toBeFocused();
 });
