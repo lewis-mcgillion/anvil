@@ -150,3 +150,40 @@ async def test_live_broker_rejects_provider_redirect(monkeypatch):
     with pytest.raises(BrokerDenied, match="redirect"):
         await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
                                   credential="operator-secret", payload={}, ledger=BudgetLedger(LiveBudget()))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("extra_header", [
+    b"Transfer-Encoding: chunked\r\n",
+    b"Content-Encoding: gzip\r\n",
+    b"Content-Length: 2\r\n",
+])
+async def test_live_broker_rejects_ambiguous_response_framing(monkeypatch, extra_header):
+    import asyncio
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint", lambda endpoint: asyncio.sleep(0, result=("8.8.8.8",)))
+
+    class Writer:
+        def write(self, data):
+            pass
+
+        async def drain(self):
+            pass
+
+        def close(self):
+            pass
+
+        async def wait_closed(self):
+            pass
+
+    async def connect(*args, **kwargs):
+        reader = asyncio.StreamReader()
+        reader.feed_data(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n" + extra_header + b"\r\n{}")
+        reader.feed_eof()
+        return reader, Writer()
+
+    monkeypatch.setattr(asyncio, "open_connection", connect)
+    endpoint = "https://models.example.com/v1/responses"
+    with pytest.raises(BrokerDenied, match="encoding|content length"):
+        await dispatch_live_model(endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+                                  credential="operator-secret", payload={}, ledger=BudgetLedger(LiveBudget()))

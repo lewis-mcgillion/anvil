@@ -101,6 +101,10 @@ async def dispatch_live_model(*, endpoint: str, profile_endpoint: str, approved:
         if len(head) > 8192 or not head.startswith((b"HTTP/1.1 200 ", b"HTTP/1.0 200 ")):
             raise BrokerDenied("Model provider rejected request or attempted redirect")
         headers = head.decode("ascii").lower().split("\r\n")
+        if any(line.startswith(("transfer-encoding:", "content-encoding:")) for line in headers[1:]):
+            raise BrokerDenied("Model provider response uses unsupported encoding")
+        if any(line.startswith((" ", "\t")) or (line and ":" not in line) for line in headers[1:]):
+            raise BrokerDenied("Model provider response has malformed headers")
         lengths = [line.split(":", 1)[1].strip() for line in headers[1:] if line.startswith("content-length:")]
         if len(lengths) != 1 or not lengths[0].isdigit():
             raise BrokerDenied("Model provider response requires a single content length")
