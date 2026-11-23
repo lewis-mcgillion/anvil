@@ -106,6 +106,48 @@ async def test_priced_request_requires_output_cap_before_network(monkeypatch):
         )
 
 
+@pytest.mark.asyncio
+async def test_priced_provider_response_cannot_exceed_output_cap(monkeypatch):
+    import asyncio
+    import json
+
+    monkeypatch.setattr("anvil_server.broker_policy.resolve_public_endpoint",
+                        lambda endpoint: asyncio.sleep(0, result=("8.8.8.8",)))
+
+    class Writer:
+        def write(self, data):
+            pass
+
+        async def drain(self):
+            pass
+
+        def close(self):
+            pass
+
+        async def wait_closed(self):
+            pass
+
+    async def connect(*args, **kwargs):
+        content = json.dumps({"usage": {
+            "input_tokens": 2, "output_tokens": 11, "cost_micro_usd": 0,
+        }}).encode()
+        reader = asyncio.StreamReader()
+        reader.feed_data(f"HTTP/1.1 200 OK\r\nContent-Length: {len(content)}\r\n\r\n".encode() + content)
+        reader.feed_eof()
+        return reader, Writer()
+
+    monkeypatch.setattr(asyncio, "open_connection", connect)
+    endpoint = "https://models.example.com/v1/responses"
+    with pytest.raises(BrokerDenied, match="output token cap"):
+        await dispatch_live_model(
+            endpoint=endpoint, profile_endpoint=endpoint, approved=True,
+            credential="operator-secret", payload={"max_output_tokens": 10},
+            ledger=BudgetLedger(LiveBudget(
+                input_micro_usd_per_token=1, output_micro_usd_per_token=1,
+            )),
+        )
+
+
 def test_broker_budget_cancellation_and_expired_wall_time():
     ledger = BudgetLedger(LiveBudget())
     ledger.cancel()

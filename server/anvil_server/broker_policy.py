@@ -217,6 +217,8 @@ async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, a
             ):
                 raise BrokerDenied("Model provider usage is invalid")
             actual_input_tokens = usage["input_tokens"]
+            if ledger.budget.input_micro_usd_per_token is not None and usage["output_tokens"] > output_cap:
+                raise BrokerDenied("Provider exceeded requested output token cap")
             independently_priced = 0
             if ledger.budget.input_micro_usd_per_token is not None:
                 independently_priced = (
