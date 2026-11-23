@@ -92,6 +92,8 @@ function EventInspector({ client, projectId, runId }: { client: ReturnType<typeo
   return <section aria-label="Read-only event inspector">
     <p>Events are read-only. Playback and seeking never execute agents, models or tools.</p>
     <h3>Observed causal branches</h3>
+    <p role="note">Only loaded events are analyzed. Missing parent references may be on unloaded pages;
+      this view does not establish capture completeness or replay eligibility.</p>
     <ul>{branches.map((branch) => <li key={branch.streamId}>
       <button onClick={() => { setStreamFilter(branch.streamId); setScrollTop(0); viewport.current?.scrollTo({ top: 0 }); }}>
         Stream {branch.streamId}
