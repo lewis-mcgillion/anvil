@@ -28,14 +28,15 @@ export async function watchRunEvents(token: string, projectId: string, runId: st
       pendingCarriageReturn = chunk.endsWith("\r");
       if (pendingCarriageReturn) chunk = chunk.slice(0, -1);
       buffer += chunk.replace(/\r\n?/g, "\n");
-      if (buffer.length > 1024 * 1024) throw new Error("The event stream exceeded its frame limit.");
       let boundary = buffer.indexOf("\n\n");
       while (boundary !== -1) {
         const frame = buffer.slice(0, boundary);
         buffer = buffer.slice(boundary + 2);
-        if (frame.split("\n").some((line) => line.startsWith("data:"))) onEvent();
+        if (frame.length > 1024 * 1024) throw new Error("The event stream exceeded its frame limit.");
+        if (!signal.aborted && frame.split("\n").some((line) => line.startsWith("data:"))) onEvent();
         boundary = buffer.indexOf("\n\n");
       }
+      if (buffer.length > 1024 * 1024) throw new Error("The event stream exceeded its frame limit.");
     }
   } finally {
     await reader.cancel().catch(() => undefined);
