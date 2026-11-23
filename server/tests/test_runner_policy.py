@@ -169,6 +169,21 @@ def test_seccomp_profile_rejects_privileged_syscall_allow_rules(tmp_path):
         container_arguments(safe_launch(), directory, profile)
 
 
+@pytest.mark.parametrize("action,names", [(None, ["read"]), ("SCMP_ACT_UNKNOWN", ["read"]),
+                                           ("SCMP_ACT_ALLOW", []), ("SCMP_ACT_ALLOW", [""])])
+def test_seccomp_profile_rejects_malformed_rules(tmp_path, action, names):
+    import json
+
+    directory = tmp_path / "uds"
+    directory.mkdir(mode=0o700)
+    profile = tmp_path / "seccomp.json"
+    profile.write_text(json.dumps({"defaultAction": "SCMP_ACT_ERRNO", "syscalls": [
+        {"names": names, "action": action}]}))
+    profile.chmod(0o600)
+    with pytest.raises(IsolationUnavailable, match="privileged syscalls"):
+        container_arguments(safe_launch(), directory, profile)
+
+
 @pytest.mark.parametrize("names", [None, "mount", [3]])
 def test_seccomp_profile_rejects_malformed_syscall_names(tmp_path, names):
     import json

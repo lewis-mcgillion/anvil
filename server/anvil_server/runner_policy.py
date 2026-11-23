@@ -128,8 +128,11 @@ def container_arguments(launch: RunnerLaunch, socket_directory: Path, seccomp_pr
     rules = profile.get("syscalls", [])
     if not isinstance(rules, list) or any(
         not isinstance(rule, dict)
-        or not isinstance(rule.get("names"), list)
-        or not all(isinstance(name, str) for name in rule["names"])
+        or not isinstance(rule.get("names"), list) or not rule["names"]
+        or not all(isinstance(name, str) and name for name in rule["names"])
+        or rule.get("action") not in {"SCMP_ACT_ALLOW", "SCMP_ACT_ERRNO", "SCMP_ACT_KILL",
+                                     "SCMP_ACT_KILL_PROCESS", "SCMP_ACT_KILL_THREAD", "SCMP_ACT_TRAP",
+                                     "SCMP_ACT_LOG", "SCMP_ACT_NOTIFY", "SCMP_ACT_TRACE"}
         or rule.get("action") == "SCMP_ACT_ALLOW" and any(
             name in {"mount", "umount2", "ptrace", "bpf", "setns", "unshare", "keyctl"}
             for name in rule["names"]
