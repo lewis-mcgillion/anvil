@@ -4,6 +4,39 @@ import type { components, paths } from "./api-types";
 export type Project = components["schemas"]["Project"];
 export type Run = components["schemas"]["Run"];
 
+export async function watchRunEvents(token: string, projectId: string, runId: string,
+                                     signal: AbortSignal, onEvent: () => void): Promise<void> {
+  const response = await fetch(`/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}/watch`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
+    credentials: "omit", redirect: "error", signal,
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new ApiError(response.status, response.headers.get("X-Request-ID"), response.headers.get("Retry-After"));
+  }
+  if (!response.body) throw new Error("The event stream has no body.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (!signal.aborted) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+      if (buffer.length > 1024 * 1024) throw new Error("The event stream exceeded its frame limit.");
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary !== -1) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        if (frame.split("\n").some((line) => line.startsWith("data:"))) onEvent();
+        boundary = buffer.indexOf("\n\n");
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,

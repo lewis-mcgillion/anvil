@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ApiError, dashboardClient, listProjects, listProjectRuns, type Project, type Run } from "./client";
+import { ApiError, dashboardClient, listProjects, listProjectRuns, watchRunEvents, type Project, type Run } from "./client";
 import { captureQualityLabel } from "./capture-quality";
 import "./style.css";
 
@@ -43,7 +43,7 @@ function Page({ title, children }: React.PropsWithChildren<{ title: string }>) {
   return <><h1 ref={heading} tabIndex={-1}>{title}</h1>{children}</>;
 }
 
-function ProjectOverview({ projects, client }: { projects: Project[]; client: ReturnType<typeof dashboardClient> }) {
+function ProjectOverview({ projects, client, token }: { projects: Project[]; client: ReturnType<typeof dashboardClient>; token: string }) {
   const { projectId } = useParams();
   const project = projects.find((item) => item.id === projectId);
   const [runs, setRuns] = useState<Run[]>([]);
@@ -53,6 +53,21 @@ function ProjectOverview({ projects, client }: { projects: Project[]; client: Re
   const [loadingRuns, setLoadingRuns] = useState(true);
   const [runQuery, setRunQuery] = useState("");
   const [captureFilter, setCaptureFilter] = useState("all");
+  const [watchedRun, setWatchedRun] = useState<string>();
+  const [watchError, setWatchError] = useState<string>();
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    if (!project || !watchedRun) return;
+    const controller = new AbortController();
+    setWatchError(undefined);
+    watchRunEvents(token, project.id, watchedRun, controller.signal, () => {
+      setCursor(undefined);
+      setRevision((value) => value + 1);
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setWatchError(error instanceof Error ? error.message : "Live updates unavailable");
+    });
+    return () => controller.abort();
+  }, [token, project?.id, watchedRun]);
   const visibleRuns = runs.filter((run) =>
     (captureFilter === "all" || run.capture_state === captureFilter) &&
     (`${run.agent_name} ${run.id}`.toLowerCase().includes(runQuery.toLowerCase())));
@@ -70,7 +85,7 @@ function ProjectOverview({ projects, client }: { projects: Project[]; client: Re
       if (!controller.signal.aborted) setRunError(failure instanceof Error ? failure.message : "Unable to load runs");
     }).finally(() => { if (!controller.signal.aborted) setLoadingRuns(false); });
     return () => controller.abort();
-  }, [client, project?.id, cursor]);
+  }, [client, project?.id, cursor, revision]);
   if (!project) {
     return <Page title="Project unavailable"><p>This project is not in the loaded authorized project list. Load additional projects or choose a visible project.</p><Link to="/">Choose a project</Link></Page>;
   }
@@ -89,10 +104,13 @@ function ProjectOverview({ projects, client }: { projects: Project[]; client: Re
     {runError && <p role="alert">{runError}</p>}
     {!loadingRuns && !runError && runs.length === 0 && <p>No recorded runs in this project.</p>}
     {!loadingRuns && !runError && runs.length > 0 && visibleRuns.length === 0 && <p>No runs match these filters.</p>}
+    {watchError && <p role="alert">Live updates stopped: {watchError}</p>}
     <ul>{visibleRuns.map((run) => <li key={run.id}><strong>{run.agent_name}</strong> <code>{run.id}</code>
       <span> — {run.capture_state}; {run.execution_state}; {captureQualityLabel({
         capture_status: run.capture_state, execution_outcome: run.execution_state,
-      })}</span></li>)}</ul>
+      })}</span> <button onClick={() => setWatchedRun(watchedRun === run.id ? undefined : run.id)}>
+        {watchedRun === run.id ? "Stop live updates" : `Watch ${run.agent_name}`}
+      </button></li>)}</ul>
     {nextCursor && <button disabled={loadingRuns} onClick={() => setCursor(nextCursor)}>Load more runs</button>}
     <p role="note">Replay eligibility is not verified by run summaries. A sealed recording manifest is required before any run can be considered replay-eligible. This dashboard never executes agent code.</p>
   </Page>;
@@ -165,7 +183,7 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: (message?: 
         <Route path="/" element={<Page title="Projects">
           {projects.length === 0 ? <p>No projects are visible to this key. Ask an administrator for a project grant.</p> : <ul>{projects.map((project) => <li key={project.id}><Link to={`/projects/${project.id}`}>{project.name}</Link></li>)}</ul>}
         </Page>} />
-        <Route path="/projects/:projectId" element={<ProjectOverview projects={projects} client={client} />} />
+        <Route path="/projects/:projectId" element={<ProjectOverview projects={projects} client={client} token={token} />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Page title="Page not found"><Link to="/">Return to projects</Link></Page>} />
       </Routes>}
