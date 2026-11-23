@@ -172,9 +172,11 @@ async def run_leased_attempt(
         raise InvalidAttempt("Candidate wall-time budget must be positive")
     if await queue.acquire_job(project_id, job_id, lease_token) is None:
         return None
+    lease_duration = getattr(queue, "lease_duration", None)
+    heartbeat_interval = min(10.0, lease_duration.total_seconds() / 3) if lease_duration else 10.0
     async def renew_lease() -> None:
         while True:
-            await asyncio.sleep(10)
+            await asyncio.sleep(heartbeat_interval)
             await queue.heartbeat(project_id, job_id, lease_token)
 
     heartbeat_task = asyncio.create_task(renew_lease()) if callable(getattr(queue, "heartbeat", None)) else None

@@ -329,6 +329,42 @@ async def test_lease_renewal_failure_cancels_execution_before_completion(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_heartbeat_interval_scales_with_short_lease(monkeypatch):
+    import asyncio
+    from datetime import timedelta
+    from uuid import UUID
+
+    intervals = []
+
+    class Queue:
+        lease_duration = timedelta(seconds=3)
+
+        async def acquire_job(self, *args):
+            return {"id": args[1]}
+
+        async def heartbeat(self, *args):
+            raise RuntimeError("renewed")
+
+    async def run():
+        await asyncio.Future()
+
+    async def seal(evidence):
+        pass
+
+    original_sleep = asyncio.sleep
+
+    async def observe_sleep(seconds):
+        intervals.append(seconds)
+        await original_sleep(0)
+
+    monkeypatch.setattr("anvil_server.attempt_provenance.asyncio.sleep", observe_sleep)
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    with pytest.raises(RuntimeError, match="renewed"):
+        await run_leased_attempt(Queue(), identifier, identifier, identifier, sample(), run, seal)
+    assert intervals == [1.0]
+
+
+@pytest.mark.asyncio
 async def test_unavailable_lease_never_runs_candidate():
     from uuid import UUID
 
