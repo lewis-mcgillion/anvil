@@ -1,6 +1,7 @@
 """Verify required release evidence fields; cryptographic checks remain external."""
 
 import re
+from pathlib import PurePosixPath
 
 
 class ReleaseNotReady(ValueError):
@@ -25,6 +26,10 @@ def validate_release_manifest(manifest: dict) -> None:
                 or not package.get("sbom_verified") is True
                 or not re.fullmatch(r"sha256:[0-9a-f]{64}", str(package.get("sbom_digest", "")))
                 or type(package.get("provenance_reference")) is not str
-                or not package["provenance_reference"].strip()):
+                or not package["provenance_reference"].strip()
+                or package["provenance_reference"].startswith("/")
+                or "\\" in package["provenance_reference"]
+                or any(part in (".", "..") for part in package["provenance_reference"].split("/"))
+                or PurePosixPath(package["provenance_reference"]).suffix != ".json"):
             raise ReleaseNotReady("Unsigned or unverified package/SBOM")
         names.add(package["name"])

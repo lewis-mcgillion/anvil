@@ -23,3 +23,9 @@ class ReleaseManifestTests(unittest.TestCase):
         duplicate = {**value, "packages": value["packages"] * 2}
         with self.assertRaises(ReleaseNotReady):
             validate_release_manifest(duplicate)
+
+        for reference in ("../secrets.json", "/etc/attestation.json", "folder\\file.json", "notes.txt"):
+            variant = {**value, "packages": [{**value["packages"][0],
+                                               "provenance_reference": reference}]}
+            with self.assertRaises(ReleaseNotReady):
+                validate_release_manifest(variant)
