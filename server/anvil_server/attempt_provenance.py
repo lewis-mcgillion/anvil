@@ -182,6 +182,12 @@ async def run_persisted_attempt(
     lease_token: UUID, details: Mapping[str, object],
     execute: Callable[[], Awaitable[object]],
 ) -> dict[str, object] | None:
+    try:
+        agent_version_id = UUID(details["agent_version_id"])
+    except (KeyError, ValueError, TypeError) as error:
+        raise InvalidAttempt("Candidate agent version ID is invalid") from error
+    await validate_registered_agent(engine, project_id, agent_version_id, details)
+
     async def seal(evidence: dict[str, object]) -> None:
         await persist_evidence(engine, project_id, job_id, new_uuid7(), evidence)
 

@@ -309,12 +309,18 @@ async def test_persisted_attempt_writes_evidence_before_job_completion(monkeypat
     async def run():
         events.append("run")
 
+    async def registered(*args):
+        events.append("registered")
+
     monkeypatch.setattr("anvil_server.attempt_provenance.persist_evidence", persist)
+    monkeypatch.setattr("anvil_server.attempt_provenance.validate_registered_agent", registered)
     identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    details = sample()
+    details["agent_version_id"] = str(identifier)
     result = await run_persisted_attempt(None, Queue(), identifier, identifier,
-                                         identifier, sample(), run)
+                                         identifier, details, run)
     assert result["outcome"] == "succeeded"
-    assert events == ["acquire", "run", "persist", "complete"]
+    assert events == ["registered", "acquire", "run", "persist", "complete"]
 
 
 @pytest.mark.asyncio
@@ -337,10 +343,16 @@ async def test_persisted_attempt_does_not_complete_job_when_seal_fails(monkeypat
         pass
 
     monkeypatch.setattr("anvil_server.attempt_provenance.persist_evidence", persist)
+    async def registered(*args):
+        return None
+
+    monkeypatch.setattr("anvil_server.attempt_provenance.validate_registered_agent", registered)
     identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    details = sample()
+    details["agent_version_id"] = str(identifier)
     with pytest.raises(RuntimeError, match="database unavailable"):
         await run_persisted_attempt(None, Queue(), identifier, identifier,
-                                    identifier, sample(), run)
+                                    identifier, details, run)
     assert completed == []
 
 
