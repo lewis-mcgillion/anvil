@@ -241,6 +241,17 @@ async def test_model_error_and_sink_failure_are_explicit():
         await execute(LlmAgent(name="broken", model=Broken()), [CapturePlugin(broken_sink)])
 
 
+async def test_model_request_sink_failure_cleans_pending_bookkeeping():
+    def broken_sink(kind, payload, correlation):
+        if kind == "model.requested":
+            raise RuntimeError("sink unavailable")
+
+    plugin = CapturePlugin(broken_sink)
+    with pytest.raises(RuntimeError, match="sink unavailable"):
+        await execute(sample(lambda sku: {"available": True}), [plugin])
+    assert not plugin._models and not plugin._chunks
+
+
 async def test_cancellation_releases_capture_bookkeeping():
     entered = asyncio.Event()
 

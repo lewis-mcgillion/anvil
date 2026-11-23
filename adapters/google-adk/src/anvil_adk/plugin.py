@@ -119,9 +119,13 @@ class CapturePlugin(BasePlugin):
             raise Ineligible("overlapping model calls have an ambiguous causal identity")
         self._models[key] = llm_request.model or "unknown"
         self._chunks[key] = 0
-        self._emit("model.requested", {
-            "model": self._models[key], "request": request_body(llm_request),
-        }, callback_context)
+        try:
+            self._emit("model.requested", {
+                "model": self._models[key], "request": request_body(llm_request),
+            }, callback_context)
+        except BaseException:
+            self._clear_call(key)
+            raise
 
     async def after_model_callback(
         self, *, callback_context: CallbackContext, llm_response: LlmResponse,
