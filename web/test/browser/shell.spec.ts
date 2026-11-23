@@ -20,6 +20,31 @@ async function signIn(page: Page, key = "test-read-key") {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
 }
 
+
+test("project runs filter by agent identity and capture state", async ({ page }) => {
+  await projects(page, [first]);
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  await page.route("**/v1/runs?*", (route) => route.fulfill({ json: {
+    items: [
+      { id: runId, project_id: first.id, agent_name: "Inventory",
+        capture_state: "sealed_complete", execution_state: "succeeded" },
+      { id: "0199b167-0000-7000-8000-000000000022", project_id: first.id,
+        agent_name: "Billing", capture_state: "open", execution_state: "running" },
+    ], next_cursor: null,
+  } }));
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await expect(page.getByText("Inventory", { exact: true })).toBeVisible();
+  await expect(page.getByText("Billing", { exact: true })).toBeVisible();
+  await page.getByLabel("Filter runs by agent or ID").fill("inventory");
+  await expect(page.getByText("Billing", { exact: true })).toHaveCount(0);
+  await page.getByLabel("Filter runs by agent or ID").fill("");
+  await page.getByLabel("Capture status").selectOption("open");
+  await expect(page.getByText("Inventory", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Billing", { exact: true })).toBeVisible();
+});
+
 test("keyboard-only sign in, project switching, routing, skip link and sign out", async ({ page }) => {
   await projects(page);
   await page.goto("/");
