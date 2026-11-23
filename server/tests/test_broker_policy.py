@@ -50,6 +50,13 @@ def test_broker_budget_ledger_accounts_and_rejects_overrun():
         ledger.charge(input_tokens=-1)
 
 
+def test_operator_pricing_rates_must_be_explicit_pair():
+    with pytest.raises(BrokerDenied, match="together"):
+        LiveBudget(input_micro_usd_per_token=5).validate()
+    with pytest.raises(BrokerDenied, match="pricing"):
+        LiveBudget(input_micro_usd_per_token=-1, output_micro_usd_per_token=2).validate()
+
+
 def test_broker_budget_cancellation_and_expired_wall_time():
     ledger = BudgetLedger(LiveBudget())
     ledger.cancel()

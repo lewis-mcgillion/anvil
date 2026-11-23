@@ -55,6 +55,8 @@ class LiveBudget:
     input_tokens: int = 20_000
     output_tokens: int = 10_000
     estimated_usd: float = 1.0
+    input_micro_usd_per_token: int | None = None
+    output_micro_usd_per_token: int | None = None
 
     def validate(self) -> None:
         values = (self.wall_seconds, self.model_calls, self.tool_calls,
@@ -63,6 +65,11 @@ class LiveBudget:
             raise BrokerDenied("Live model budgets must be positive integers")
         if type(self.estimated_usd) not in {int, float} or not 0 < self.estimated_usd <= 1.0:
             raise BrokerDenied("Invalid live model spending budget")
+        for rate in (self.input_micro_usd_per_token, self.output_micro_usd_per_token):
+            if rate is not None and (type(rate) is not int or rate < 0):
+                raise BrokerDenied("Invalid operator model pricing rate")
+        if (self.input_micro_usd_per_token is None) != (self.output_micro_usd_per_token is None):
+            raise BrokerDenied("Operator model pricing rates must be configured together")
 
 
 class BudgetLedger:
@@ -184,9 +191,15 @@ async def _dispatch_live_model_locked(*, endpoint: str, profile_endpoint: str, a
             ):
                 raise BrokerDenied("Model provider usage is invalid")
             actual_input_tokens = usage["input_tokens"]
+            independently_priced = 0
+            if ledger.budget.input_micro_usd_per_token is not None:
+                independently_priced = (
+                    actual_input_tokens * ledger.budget.input_micro_usd_per_token
+                    + usage["output_tokens"] * ledger.budget.output_micro_usd_per_token
+                )
             ledger.charge(input_tokens=max(0, actual_input_tokens - estimated_input_tokens),
                           output_tokens=usage["output_tokens"],
-                          micro_usd=usage["cost_micro_usd"])
+                          micro_usd=max(usage["cost_micro_usd"], independently_priced))
             return response
     except BrokerDenied:
         raise
