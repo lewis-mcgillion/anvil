@@ -35,7 +35,7 @@ def test_container_arguments_enforce_isolation(tmp_path):
     directory = tmp_path / "uds"
     directory.mkdir(mode=0o700)
     profile = tmp_path / "seccomp.json"
-    profile.write_text("{}")
+    profile.write_text('{"defaultAction":"SCMP_ACT_ERRNO"}')
     profile.chmod(0o600)
     with socket.socket(socket.AF_UNIX) as supervisor:
         supervisor.bind(str(directory / "supervisor.sock"))
@@ -61,7 +61,7 @@ def test_container_arguments_reject_missing_socket_and_unsafe_paths(tmp_path):
     directory = tmp_path / "uds"
     directory.mkdir(mode=0o700)
     profile = tmp_path / "seccomp.json"
-    profile.write_text("{}")
+    profile.write_text('{"defaultAction":"SCMP_ACT_ERRNO"}')
     profile.chmod(0o600)
     with pytest.raises(IsolationUnavailable, match="socket"):
         container_arguments(safe_launch(), directory, profile)
@@ -76,13 +76,23 @@ def test_container_arguments_reject_host_owned_socket(tmp_path):
     directory = tmp_path / "uds"
     directory.mkdir(mode=0o700)
     profile = tmp_path / "seccomp.json"
-    profile.write_text("{}")
+    profile.write_text('{"defaultAction":"SCMP_ACT_ERRNO"}')
     profile.chmod(0o600)
     with socket.socket(socket.AF_UNIX) as supervisor:
         supervisor.bind(str(directory / "supervisor.sock"))
         if directory.stat().st_uid != 65534:
             with pytest.raises(IsolationUnavailable, match="sandbox identity"):
                 container_arguments(safe_launch(), directory, profile)
+
+
+def test_seccomp_profile_must_deny_by_default(tmp_path):
+    directory = tmp_path / "uds"
+    directory.mkdir(mode=0o700)
+    profile = tmp_path / "seccomp.json"
+    profile.write_text('{"defaultAction":"SCMP_ACT_ALLOW"}')
+    profile.chmod(0o600)
+    with pytest.raises(IsolationUnavailable, match="deny syscalls"):
+        container_arguments(safe_launch(), directory, profile)
 
 
 @pytest.mark.asyncio
@@ -97,7 +107,7 @@ async def test_supervisor_fails_closed_without_runtime(tmp_path, monkeypatch):
     directory = tmp_path / "uds"
     directory.mkdir(mode=0o700)
     profile = tmp_path / "seccomp.json"
-    profile.write_text("{}")
+    profile.write_text('{"defaultAction":"SCMP_ACT_ERRNO"}')
     profile.chmod(0o600)
     async def missing_runtime(*args, **kwargs):
         raise FileNotFoundError("docker")
@@ -114,7 +124,7 @@ async def test_supervisor_kills_timed_out_runner(tmp_path, monkeypatch):
     directory = tmp_path / "uds"
     directory.mkdir(mode=0o700)
     profile = tmp_path / "seccomp.json"
-    profile.write_text("{}")
+    profile.write_text('{"defaultAction":"SCMP_ACT_ERRNO"}')
     profile.chmod(0o600)
     killed = []
 

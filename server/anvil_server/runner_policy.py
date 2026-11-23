@@ -7,6 +7,7 @@ import asyncio
 import os
 import signal
 import tempfile
+import json
 from pathlib import Path
 import stat
 from dataclasses import dataclass
@@ -47,6 +48,12 @@ def container_arguments(launch: RunnerLaunch, socket_directory: Path, seccomp_pr
         raise IsolationUnavailable("Runner socket directory and seccomp profile must exist")
     if socket_directory.stat().st_mode & 0o022 or seccomp_profile.stat().st_mode & 0o022:
         raise IsolationUnavailable("Runner isolation paths must not be group/world writable")
+    try:
+        profile = json.loads(seccomp_profile.read_text())
+    except (OSError, UnicodeError, ValueError) as error:
+        raise IsolationUnavailable("Runner seccomp policy is unreadable or invalid") from error
+    if not isinstance(profile, dict) or profile.get("defaultAction") not in ("SCMP_ACT_ERRNO", "SCMP_ACT_KILL", "SCMP_ACT_KILL_PROCESS", "SCMP_ACT_KILL_THREAD"):
+        raise IsolationUnavailable("Runner seccomp policy must deny syscalls by default")
     socket_path = socket_directory / "supervisor.sock"
     if socket_path.is_symlink() or not socket_path.exists() or not stat.S_ISSOCK(socket_path.stat().st_mode):
         raise IsolationUnavailable("Runner supervisor socket is missing")
