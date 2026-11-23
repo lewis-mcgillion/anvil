@@ -18,10 +18,11 @@ def test_isolated_launch_policy_accepts_enforced_controls():
 
 
 def test_runner_image_rejects_credentials_ports_and_volumes():
-    assert verify_runner_image_config({"config": {"Env": ["PATH=/usr/bin", "HOME=/tmp"]}})
+    assert verify_runner_image_config({"config": {"Env": ["PATH=/usr/bin", "HOME=/tmp"], "User": "65534:65534"}})
     for config in ({"config": {"Env": ["API_KEY=secret"]}},
                    {"config": {"Env": [], "ExposedPorts": {"443/tcp": {}}}},
-                   {"config": {"Env": [], "Volumes": {"/host": {}}}}):
+                   {"config": {"Env": [], "Volumes": {"/host": {}}}},
+                   {"config": {"Env": [], "User": "root"}}):
         with pytest.raises(IsolationUnavailable):
             verify_runner_image_config(config)
 

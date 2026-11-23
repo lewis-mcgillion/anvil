@@ -32,6 +32,8 @@ def verify_runner_image_config(config: dict) -> bool:
         raise IsolationUnavailable("Runner image environment contains unapproved variables")
     if settings.get("Volumes") or settings.get("ExposedPorts"):
         raise IsolationUnavailable("Runner image declares forbidden volumes or ports")
+    if settings.get("User", "") in {"", "0", "root", "0:0"}:
+        raise IsolationUnavailable("Runner image must declare an unprivileged user")
     return True
 
 
