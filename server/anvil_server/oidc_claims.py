@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 
 class IdentityDenied(ValueError):
@@ -11,10 +12,13 @@ class IdentityDenied(ValueError):
 def validate_project_claims(claims: Mapping[str, object], *, issuer: str,
                             audience: str, project_id: str, now: datetime | None = None) -> str:
     current = now or datetime.now(timezone.utc)
+    parsed_issuer = urlsplit(issuer)
     permitted_audiences = claims.get("aud")
     if type(permitted_audiences) is str:
         permitted_audiences = [permitted_audiences]
-    if (not issuer.startswith("https://") or not audience or not project_id
+    if (parsed_issuer.scheme != "https" or not parsed_issuer.hostname
+            or parsed_issuer.username is not None or parsed_issuer.password is not None
+            or parsed_issuer.fragment or parsed_issuer.query or not audience or not project_id
             or claims.get("iss") != issuer or type(permitted_audiences) is not list
             or audience not in permitted_audiences or any(type(item) is not str for item in permitted_audiences)
             or not permitted_audiences

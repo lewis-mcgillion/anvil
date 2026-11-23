@@ -32,9 +32,13 @@ def test_cross_project_expired_or_untrusted_claim_denied(change):
         check(claims() | change)
 
 
-def test_non_https_issuer_configuration_denied():
+@pytest.mark.parametrize("issuer", ["http://identity.example.com", "https://",
+                                    "https://user@identity.example.com",
+                                    "https://identity.example.com?token=secret",
+                                    "https://identity.example.com#fragment"])
+def test_invalid_issuer_configuration_denied(issuer):
     with pytest.raises(IdentityDenied):
-        validate_project_claims(claims(), issuer="http://identity.example.com",
+        validate_project_claims(claims() | {"iss": issuer}, issuer=issuer,
                                 audience="anvil-api", project_id="project-a", now=NOW)
 
 
