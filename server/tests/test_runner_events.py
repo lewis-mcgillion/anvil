@@ -60,10 +60,28 @@ async def test_persisted_session_routes_batches_to_capture_ingest(monkeypatch, t
         return 1
 
     monkeypatch.setattr("anvil_server.runner_events.accept_batch", ingest)
+    monkeypatch.setattr("anvil_server.runner_events.prepare_runner_socket_directory", lambda path: path.mkdir())
     monkeypatch.setattr("anvil_server.runner_events.run_isolated_recorded_session", isolated)
     result = await run_persisted_recorded_session(
-        "engine", PROJECT, "launch", tmp_path, tmp_path / "profile",
+        "engine", PROJECT, "launch", tmp_path / "uds", tmp_path / "profile",
         adapter="google-adk", config="config", fixtures="fixtures",
     )
     assert result == 1
     assert stored[0][:4] == ("engine", PROJECT, UUID(RUN), UUID(STREAM))
+    assert not (tmp_path / "uds").exists()
+
+
+@pytest.mark.asyncio
+async def test_persisted_session_reclaims_directory_on_failure(monkeypatch, tmp_path):
+    monkeypatch.setattr("anvil_server.runner_events.prepare_runner_socket_directory", lambda path: path.mkdir())
+
+    async def isolated(*args, **kwargs):
+        raise IsolationUnavailable("runner failed")
+
+    monkeypatch.setattr("anvil_server.runner_events.run_isolated_recorded_session", isolated)
+    with pytest.raises(IsolationUnavailable, match="runner failed"):
+        await run_persisted_recorded_session(
+            "engine", PROJECT, "launch", tmp_path / "uds", tmp_path / "profile",
+            adapter="google-adk", config="config", fixtures="fixtures",
+        )
+    assert not (tmp_path / "uds").exists()

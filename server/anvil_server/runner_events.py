@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from .events import Event, accept_batch
 from .runner_policy import IsolationUnavailable
-from .runner_policy import RunnerLaunch
+from .runner_policy import RunnerLaunch, prepare_runner_socket_directory
 from .runner_pb2 import SupervisorMessage
 from .runner_fixtures import RecordedRunnerFixtures
 from .runner_supervisor import run_isolated_recorded_session
@@ -46,9 +46,13 @@ async def run_persisted_recorded_session(
     config: SupervisorMessage, fixtures: RecordedRunnerFixtures,
     timeout_seconds: float = 60,
 ) -> int:
-    return await run_isolated_recorded_session(
-        launch, socket_directory, seccomp_profile, adapter=adapter,
-        config=config, fixtures=fixtures,
-        persist_events=postgres_event_sink(engine, project_id),
-        timeout_seconds=timeout_seconds,
-    )
+    prepare_runner_socket_directory(socket_directory)
+    try:
+        return await run_isolated_recorded_session(
+            launch, socket_directory, seccomp_profile, adapter=adapter,
+            config=config, fixtures=fixtures,
+            persist_events=postgres_event_sink(engine, project_id),
+            timeout_seconds=timeout_seconds,
+        )
+    finally:
+        socket_directory.rmdir()
