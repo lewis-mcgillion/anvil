@@ -75,3 +75,8 @@ def test_untrusted_header_rejected(private_key, header):
 def test_ambiguous_key_id_rejected(private_key):
     with pytest.raises(IdentityDenied):
         verify(signed_token(private_key), [jwk(private_key), jwk(private_key)])
+
+
+def test_oversized_token_rejected_before_signature_verification(private_key):
+    with pytest.raises(IdentityDenied, match="Untrusted project identity"):
+        verify(signed_token(private_key) + "x" * 16_384, [jwk(private_key)])

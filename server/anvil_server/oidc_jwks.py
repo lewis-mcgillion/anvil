@@ -21,6 +21,8 @@ def _decode(part: str) -> bytes:
 def verify_project_token(token: str, jwks: Mapping[str, object], *, issuer: str,
                          audience: str, project_id: str) -> str:
     try:
+        if type(token) is not str or len(token) > 16_384:
+            raise ValueError("Token exceeds verification limit")
         parts = token.split(".")
         if len(parts) != 3 or any(not part for part in parts):
             raise ValueError("Malformed token")
