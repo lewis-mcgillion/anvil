@@ -68,6 +68,12 @@ broker and defines its controls.
 
 ## Errors, cancellation and cleanup
 
+`anvil_server.broker_policy` supplies static opt-in, HTTPS profile and budget
+admission checks. It does not dispatch HTTP calls, resolve DNS, enforce
+runtime accounting or isolate credentials. Until the actual broker enforces
+these requirements and detects DNS rebinding, redirects and private-address
+destinations, live inference must remain disabled.
+
 - Disallowed endpoint, unknown profile, redirect to a non-allowlisted host
   or budget exhaustion each fail with a stable problem identifier; no
   request is dispatched on failure.
