@@ -67,6 +67,7 @@ async def supervise_recorded_messages(reader: asyncio.StreamReader, writer: asyn
                                       persist_events: Callable[[object], Awaitable[None]],
                                       resolve_model: Callable[[object], Awaitable[SupervisorMessage]] | None = None,
                                       resolve_tool: Callable[[object], Awaitable[SupervisorMessage]] | None = None,
+                                      finalize_fixtures: Callable[[], Awaitable[None]] | None = None,
                                       timeout_seconds: float = 60) -> int:
     if not run_id or timeout_seconds <= 0 or not callable(persist_events):
         raise IsolationUnavailable("Invalid recorded runner supervision configuration")
@@ -107,6 +108,10 @@ async def supervise_recorded_messages(reader: asyncio.StreamReader, writer: asyn
             elif kind == "finished":
                 if message.finished.outcome == RUN_OUTCOME_UNSPECIFIED:
                     raise IsolationUnavailable("Runner reported unspecified terminal outcome")
+                if message.finished.outcome == 1:
+                    if finalize_fixtures is None:
+                        raise IsolationUnavailable("Successful runner requires fixture verification")
+                    await finalize_fixtures()
                 await write_supervisor_message(writer, SupervisorMessage(finished={}))
                 return message.finished.outcome
             else:

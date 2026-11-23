@@ -105,8 +105,12 @@ async def test_supervisor_acks_recorded_events_and_terminal_outcome():
     async def persist(batch):
         persisted.append(batch.stream_id)
 
-    assert await supervise_recorded_messages(reader, Writer(), run_id="run", persist_events=persist) == 1
-    assert persisted == ["stream"]
+    async def finalize():
+        persisted.append("finalized")
+
+    assert await supervise_recorded_messages(reader, Writer(), run_id="run", persist_events=persist,
+                                              finalize_fixtures=finalize) == 1
+    assert persisted == ["stream", "finalized"]
     assert outgoing[0] == framed(SupervisorMessage(event_ack={
         "run_id": "run", "stream_id": "stream", "acked_through_sequence": 0,
     }))
@@ -178,8 +182,12 @@ async def test_supervisor_only_forwards_correlated_fixture_model_response():
         return SupervisorMessage(model_response={"request_id": request.request_id,
                                                   "error": {"code": "MODEL_UNMATCHED"}})
 
+    async def persist_empty():
+        pass
+
     assert await supervise_recorded_messages(reader, Writer(), run_id="run",
-                                              persist_events=persist, resolve_model=resolve) == 1
+                                              persist_events=persist, resolve_model=resolve,
+                                              finalize_fixtures=persist_empty) == 1
     assert outgoing[0] == framed(SupervisorMessage(model_response={
         "request_id": "model-1", "error": {"code": "MODEL_UNMATCHED"},
     }))
@@ -200,3 +208,16 @@ async def test_supervisor_rejects_mismatched_fixture_response_id():
     with pytest.raises(IsolationUnavailable, match="correlation"):
         await supervise_recorded_messages(reader, None, run_id="run",
                                           persist_events=persist, resolve_tool=resolve)
+
+
+@pytest.mark.asyncio
+async def test_successful_runner_cannot_skip_fixture_finalization():
+    reader = asyncio.StreamReader()
+    reader.feed_data(framed(RunnerMessage(finished={"outcome": 1})))
+    reader.feed_eof()
+
+    async def persist(batch):
+        pass
+
+    with pytest.raises(IsolationUnavailable, match="fixture verification"):
+        await supervise_recorded_messages(reader, None, run_id="run", persist_events=persist)
