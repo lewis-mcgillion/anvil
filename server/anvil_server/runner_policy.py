@@ -67,6 +67,7 @@ def container_arguments(launch: RunnerLaunch, socket_directory: Path, seccomp_pr
         "--env=PATH=/usr/bin:/bin",
         "--security-opt=no-new-privileges", f"--security-opt=seccomp={seccomp_profile}",
         "--pids-limit=64", "--memory=512m", "--cpus=1", "--user=65534:65534",
+        "--ulimit=nofile=64:64", "--ulimit=core=0:0",
         "--env=HOME=/tmp", "--tmpfs=/tmp:rw,noexec,nosuid,size=16m",
         f"--mount=type=bind,src={socket_directory},dst=/run/anvil,readonly",
         launch.image,
