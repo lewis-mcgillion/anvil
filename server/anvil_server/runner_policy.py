@@ -54,6 +54,14 @@ def container_arguments(launch: RunnerLaunch, socket_directory: Path, seccomp_pr
         raise IsolationUnavailable("Runner seccomp policy is unreadable or invalid") from error
     if not isinstance(profile, dict) or profile.get("defaultAction") not in ("SCMP_ACT_ERRNO", "SCMP_ACT_KILL", "SCMP_ACT_KILL_PROCESS", "SCMP_ACT_KILL_THREAD"):
         raise IsolationUnavailable("Runner seccomp policy must deny syscalls by default")
+    rules = profile.get("syscalls", [])
+    if not isinstance(rules, list) or any(
+        not isinstance(rule, dict) or rule.get("action") == "SCMP_ACT_ALLOW" and any(
+            name in {"mount", "umount2", "ptrace", "bpf", "setns", "unshare", "keyctl"}
+            for name in rule.get("names", [])
+        ) for rule in rules
+    ):
+        raise IsolationUnavailable("Runner seccomp profile allows forbidden privileged syscalls")
     socket_path = socket_directory / "supervisor.sock"
     if socket_path.is_symlink() or not socket_path.exists() or not stat.S_ISSOCK(socket_path.stat().st_mode):
         raise IsolationUnavailable("Runner supervisor socket is missing")
