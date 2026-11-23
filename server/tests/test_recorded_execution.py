@@ -73,3 +73,16 @@ async def test_unrecorded_tool_request_never_reaches_original_tool():
         await execute_recorded_session(session, agent)
     assert error.value.code == "FIXTURE_MISSING"
     assert executed == []
+
+
+@pytest.mark.asyncio
+async def test_recorded_agent_crash_is_not_a_successful_replay():
+    session = FixtureSession([])
+
+    async def agent(fixtures):
+        raise RuntimeError("agent crashed")
+
+    with pytest.raises(RuntimeError, match="agent crashed"):
+        await execute_recorded_session(session, agent)
+    with pytest.raises(ReplayError):
+        session.finish()
