@@ -267,7 +267,11 @@ class TestCorruption:
     def test_one_corrupt_record_does_not_hide_the_others(self, spool) -> None:
         good_first = event()
         spool.store(good_first)
-        bad = self._one(spool)
+        existing = set(spool.config.directory.glob("*.event.json"))
+        spool.store(event())
+        bad = next(iter(
+            set(spool.config.directory.glob("*.event.json")) - existing
+        ))
         bad.write_bytes(b"corrupt\n")
         good_last = event()
         spool.store(good_last)
