@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiError, dashboardClient, listProjects, type Project } from "./client";
+import { validateReplayConfig, type ReplayConfig } from "./reexecution-config";
 import "./style.css";
 
 class ErrorBoundary extends React.Component<React.PropsWithChildren, { failed: boolean }> {
@@ -45,6 +46,15 @@ function Page({ title, children }: React.PropsWithChildren<{ title: string }>) {
 function ProjectOverview({ projects }: { projects: Project[] }) {
   const { projectId } = useParams();
   const project = projects.find((item) => item.id === projectId);
+  const [agentVersion, setAgentVersion] = useState("");
+  const [mode, setMode] = useState<ReplayConfig["mode"]>("recorded");
+  const [maxModelCalls, setMaxModelCalls] = useState(20);
+  const [liveAuthorized, setLiveAuthorized] = useState(false);
+  const configuration: ReplayConfig = { agentVersion, mode, maxModelCalls, liveAuthorized,
+    runnerReady: false, brokerReady: false };
+  let validation: string;
+  try { validation = validateReplayConfig(configuration); }
+  catch (error) { validation = error instanceof Error ? error.message : "Invalid configuration"; }
   if (!project) {
     return <Page title="Project unavailable"><p>This project is not in the loaded authorized project list. Load additional projects or choose a visible project.</p><Link to="/">Choose a project</Link></Page>;
   }
@@ -52,6 +62,21 @@ function ProjectOverview({ projects }: { projects: Project[] }) {
     <p>Project ID: <code>{project.id}</code></p>
     <p>Retention: {project.retention_days} days</p>
     <h2>Investigation capabilities</h2>
+    <section aria-label="Re-execution configuration">
+      <h3>Re-execution configuration (preview)</h3>
+      <label>Pinned agent version <input value={agentVersion} onChange={(event) => setAgentVersion(event.target.value)} /></label>
+      <label>Model mode <select value={mode} onChange={(event) => {
+        setMode(event.target.value as ReplayConfig["mode"]); setLiveAuthorized(false);
+      }}><option value="recorded">Recorded fixtures</option><option value="live">Live models (restricted)</option></select></label>
+      <label>Maximum model calls <input type="number" min={1} max={20} value={maxModelCalls}
+        onChange={(event) => setMaxModelCalls(Number(event.target.value))} /></label>
+      {mode === "live" && <label><input type="checkbox" checked={liveAuthorized}
+        onChange={(event) => setLiveAuthorized(event.target.checked)} /> I explicitly authorize live model requests</label>}
+      <p role="status">{validation}</p>
+      <p>Production tools remain mocked in both modes. No job can start until the isolated runner,
+        approved broker and authenticated re-execution API are verified.</p>
+      <button type="button" disabled>Re-execution unavailable</button>
+    </section>
     <p>Run explorer and playback are not available in this dashboard yet. The Python server must implement the published run-list, event-stream and recording-projection contracts first.</p>
     <p>No capture completeness, execution outcome or replay eligibility is inferred from missing evidence. This page never schedules execution.</p>
   </Page>;

@@ -1,6 +1,28 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+test("re-execution preview requires authorization and never submits jobs", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  let submissions = 0;
+  await page.route("**/v1/**", (route) => {
+    if (route.request().method() !== "GET") submissions++;
+    return route.fulfill({ json: { items: [project], next_cursor: null } });
+  });
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Re-execution unavailable" })).toBeDisabled();
+  await page.getByLabel("Pinned agent version").fill("agent-v1");
+  await page.getByLabel("Model mode").selectOption("live");
+  await expect(page.getByRole("status")).toContainText("Isolated runner is unavailable");
+  await page.getByLabel("I explicitly authorize live model requests").check();
+  await expect(page.getByRole("button", { name: "Re-execution unavailable" })).toBeDisabled();
+  await expect(page.getByText("Production tools remain mocked", { exact: false })).toBeVisible();
+  expect(submissions).toBe(0);
+});
+
 const first = {
   id: "0199b167-0000-7000-8000-000000000011",
   name: "Alpha",
@@ -254,7 +276,7 @@ test("a later load does not steal focus from the reader", async ({ page }) => {
   await page.getByRole("button", { name: "Load more projects" }).dispatchEvent("click");
 
   // The reader keeps focus once the project page renders again.
-  await expect(page.locator("option")).toHaveCount(3);
+  await expect(selector.locator("option")).toHaveCount(3);
   await expect(selector).toBeFocused();
   await expect(page.getByRole("heading", { name: "Alpha", exact: true })).not.toBeFocused();
 });
