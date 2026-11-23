@@ -1,6 +1,6 @@
 import pytest
 
-from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt, verify_evidence, persist_evidence, load_evidence
+from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt, verify_evidence, persist_evidence, load_evidence, run_leased_attempt
 
 
 def sample():
@@ -225,3 +225,29 @@ async def test_load_evidence_returns_verified_record(monkeypatch):
     monkeypatch.setattr("anvil_server.attempt_provenance.project_connection", connection)
     identifier = UUID("0199b167-0000-7000-8000-000000000011")
     assert await load_evidence(None, identifier, identifier, identifier) == evidence
+
+
+@pytest.mark.asyncio
+async def test_leased_attempt_seals_before_completing_job():
+    from uuid import UUID
+
+    events = []
+
+    class Queue:
+        async def acquire_job(self, *args):
+            events.append("acquire")
+            return {"id": args[1]}
+
+        async def complete(self, *args):
+            events.append(("complete", args[-1]))
+
+    async def run():
+        events.append("run")
+
+    async def seal(evidence):
+        events.append("seal")
+
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    result = await run_leased_attempt(Queue(), identifier, identifier, identifier, sample(), run, seal)
+    assert result["outcome"] == "succeeded"
+    assert events == ["acquire", "run", "seal", ("complete", "succeeded")]

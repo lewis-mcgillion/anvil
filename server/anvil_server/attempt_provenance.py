@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from .database import project_connection
+from .jobs import JobQueue
 
 
 class InvalidAttempt(ValueError):
@@ -138,4 +139,19 @@ async def execute_attempt(
             if sealing.done():
                 break
     await sealing
+    return evidence
+
+
+async def run_leased_attempt(
+    queue: JobQueue, project_id: UUID, job_id: UUID, lease_token: UUID,
+    details: Mapping[str, object], execute: Callable[[], Awaitable[object]],
+    seal: Callable[[dict[str, object]], Awaitable[None]],
+) -> dict[str, object] | None:
+    if await queue.acquire_job(project_id, job_id, lease_token) is None:
+        return None
+    evidence = await execute_attempt(details, execute, seal)
+    terminal_status = "succeeded" if evidence["outcome"] == "succeeded" else (
+        "cancelled" if evidence["outcome"] == "cancelled" else "failed"
+    )
+    await queue.complete(project_id, job_id, lease_token, terminal_status)
     return evidence
