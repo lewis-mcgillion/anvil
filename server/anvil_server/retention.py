@@ -36,7 +36,8 @@ class RetentionManager:
         return sum(item.bytes for item in self.resources.values() if item.project_id == project_id)
 
     def set_quota(self, project_id: str, max_bytes: int):
-        if not project_id or max_bytes < 0 or self.usage(project_id) > max_bytes:
+        if (not project_id or type(max_bytes) is not int or max_bytes < 0
+                or self.usage(project_id) > max_bytes):
             raise ValueError("Invalid storage quota")
         self.quotas[project_id] = max_bytes
 
@@ -46,7 +47,8 @@ class RetentionManager:
         self.policies[project_id] = retention or timedelta(days=30)
 
     def put(self, resource: Resource):
-        if not resource.id or not resource.project_id or not resource.kind or resource.bytes < 0:
+        if (not resource.id or not resource.project_id or not resource.kind
+                or type(resource.bytes) is not int or resource.bytes < 0):
             raise ValueError("Invalid resource")
         if resource.id in self.resources:
             raise ValueError("Resource already exists")
