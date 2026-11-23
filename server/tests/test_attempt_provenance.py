@@ -1,6 +1,6 @@
 import pytest
 
-from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt, verify_evidence, persist_evidence, load_evidence, run_leased_attempt
+from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt, verify_evidence, persist_evidence, load_evidence, run_leased_attempt, run_persisted_attempt
 
 
 def sample():
@@ -267,3 +267,32 @@ async def test_unavailable_lease_never_runs_candidate():
     identifier = UUID("0199b167-0000-7000-8000-000000000011")
     assert await run_leased_attempt(Queue(), identifier, identifier, identifier,
                                     sample(), forbidden, forbidden) is None
+
+
+@pytest.mark.asyncio
+async def test_persisted_attempt_writes_evidence_before_job_completion(monkeypatch):
+    from uuid import UUID
+
+    events = []
+
+    class Queue:
+        async def acquire_job(self, *args):
+            events.append("acquire")
+            return {"id": args[1]}
+
+        async def complete(self, *args):
+            events.append("complete")
+
+    async def persist(*args):
+        events.append("persist")
+        assert verify_evidence(args[-1])
+
+    async def run():
+        events.append("run")
+
+    monkeypatch.setattr("anvil_server.attempt_provenance.persist_evidence", persist)
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    result = await run_persisted_attempt(None, Queue(), identifier, identifier,
+                                         identifier, sample(), run)
+    assert result["outcome"] == "succeeded"
+    assert events == ["acquire", "run", "persist", "complete"]

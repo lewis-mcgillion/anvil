@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from .database import project_connection
 from .jobs import JobQueue
+from .identifiers import new_uuid7
 
 
 class InvalidAttempt(ValueError):
@@ -155,3 +156,14 @@ async def run_leased_attempt(
     )
     await queue.complete(project_id, job_id, lease_token, terminal_status)
     return evidence
+
+
+async def run_persisted_attempt(
+    engine: AsyncEngine, queue: JobQueue, project_id: UUID, job_id: UUID,
+    lease_token: UUID, details: Mapping[str, object],
+    execute: Callable[[], Awaitable[object]],
+) -> dict[str, object] | None:
+    async def seal(evidence: dict[str, object]) -> None:
+        await persist_evidence(engine, project_id, job_id, new_uuid7(), evidence)
+
+    return await run_leased_attempt(queue, project_id, job_id, lease_token, details, execute, seal)
