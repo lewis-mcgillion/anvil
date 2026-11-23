@@ -36,7 +36,12 @@ export async function watchRunEvents(token: string, projectId: string, runId: st
         const data = frame.split("\n").filter((line) => line.startsWith("data:"))
           .map((line) => line.slice(5).trimStart()).join("\n");
         if (data && !signal.aborted) {
-          try { JSON.parse(data); }
+          try {
+            const payload: unknown = JSON.parse(data);
+            if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+              throw new Error("Invalid event payload");
+            }
+          }
           catch { throw new Error("The event stream contained invalid JSON evidence."); }
           onEvent();
         }

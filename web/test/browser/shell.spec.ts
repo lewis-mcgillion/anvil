@@ -107,6 +107,22 @@ test("run watch reports malformed SSE data rather than treating it as an update"
   await expect(page.getByText("open; running", { exact: false })).toBeVisible();
 });
 
+test("run watch rejects non-object JSON data", async ({ page }) => {
+  await projects(page, [first]);
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  await page.route("**/v1/runs?*", (route) => route.fulfill({ json: {
+    items: [{ id: runId, project_id: first.id, agent_name: "Inventory",
+      capture_state: "open", execution_state: "running" }], next_cursor: null,
+  } }));
+  await page.route(`**/v1/projects/${first.id}/runs/${runId}/watch`, (route) =>
+    route.fulfill({ contentType: "text/event-stream", body: "data: null\n\n" }));
+  await page.goto("/");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByRole("button", { name: "Watch Inventory" }).click();
+  await expect(page.getByRole("alert")).toContainText("invalid JSON evidence");
+});
+
 test("keyboard-only sign in, project switching, routing, skip link and sign out", async ({ page }) => {
   await projects(page);
   await page.goto("/");
