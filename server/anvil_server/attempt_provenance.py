@@ -139,7 +139,12 @@ async def execute_attempt(
             outcome = "succeeded"
             if isinstance(result, Mapping):
                 reported = result.get("resources")
-                if reported is not None:
+                if reported is None and any(name in budget for name in (
+                    "model_calls", "tool_calls", "input_tokens", "output_tokens", "max_spend_micro_usd"
+                )):
+                    outcome = "failed"
+                    failure = "incomplete_resource_accounting"
+                elif reported is not None:
                     if not isinstance(reported, Mapping) or not all(
                         key in {"model_calls", "tool_calls", "input_tokens", "output_tokens", "spend_micro_usd"}
                         and type(value) is int and value >= 0 for key, value in reported.items()
@@ -151,7 +156,11 @@ async def execute_attempt(
                         budget_keys = {"model_calls": "model_calls", "tool_calls": "tool_calls",
                                        "input_tokens": "input_tokens", "output_tokens": "output_tokens",
                                        "spend_micro_usd": "max_spend_micro_usd"}
-                        if any(key in resources and budget_name in budget
+                        if any(key not in resources and budget_name in budget
+                               for key, budget_name in budget_keys.items()):
+                            outcome = "failed"
+                            failure = "incomplete_resource_accounting"
+                        elif any(key in resources and budget_name in budget
                                and resources[key] > budget[budget_name]
                                for key, budget_name in budget_keys.items()):
                             outcome = "failed"

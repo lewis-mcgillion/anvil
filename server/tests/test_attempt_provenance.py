@@ -168,6 +168,30 @@ async def test_attempt_fails_when_reported_usage_exceeds_budget():
 
 
 @pytest.mark.asyncio
+async def test_attempt_rejects_missing_budgeted_resource_counter():
+    async def run():
+        return {"resources": {"tool_calls": 1}}
+
+    sealed = []
+
+    async def seal(evidence):
+        sealed.append(evidence)
+
+    attempt = sample()
+    attempt["budgets"] = {"wall_seconds": 5, "model_calls": 2}
+    evidence = await execute_attempt(attempt, run, seal)
+    assert evidence["outcome"] == "failed"
+    assert evidence["failure_code"] == "incomplete_resource_accounting"
+    assert sealed == [evidence]
+
+    async def without_resources():
+        return {"outcome": "succeeded"}
+
+    evidence = await execute_attempt(attempt, without_resources, seal)
+    assert evidence["failure_code"] == "incomplete_resource_accounting"
+
+
+@pytest.mark.asyncio
 async def test_attempt_seals_cancellation():
     import asyncio
 
