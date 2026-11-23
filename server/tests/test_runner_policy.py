@@ -185,3 +185,25 @@ async def test_supervisor_cancellation_waits_for_cleanup(tmp_path, monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         await asyncio.wait_for(task, 1)
     assert killed.is_set()
+
+
+@pytest.mark.asyncio
+async def test_supervisor_reports_cleanup_deadline(tmp_path, monkeypatch):
+    monkeypatch.setattr("anvil_server.runner_policy.container_arguments", lambda *args: ("docker", "run", "image"))
+
+    class DoneProcess:
+        returncode = 0
+
+        async def wait(self):
+            return 0
+
+    async def fake_spawn(*args, **kwargs):
+        return DoneProcess()
+
+    async def stalled_cleanup(*args, **kwargs):
+        raise asyncio.TimeoutError
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_spawn)
+    monkeypatch.setattr("anvil_server.runner_policy._reclaim_container", stalled_cleanup)
+    with pytest.raises(IsolationUnavailable, match="cleanup exceeded"):
+        await supervise_container(safe_launch(), tmp_path, tmp_path)

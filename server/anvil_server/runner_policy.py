@@ -89,14 +89,19 @@ async def supervise_container(
             except asyncio.TimeoutError as error:
                 raise IsolationUnavailable("Runner execution timed out") from error
         finally:
-            cleanup_task = asyncio.create_task(_reclaim_container(process, container_id_file))
-            while not cleanup_task.done():
-                try:
-                    await asyncio.shield(cleanup_task)
-                except asyncio.CancelledError:
-                    if cleanup_task.done():
-                        break
-            await cleanup_task
+            cleanup_task = asyncio.create_task(
+                asyncio.wait_for(_reclaim_container(process, container_id_file), timeout=10)
+            )
+            try:
+                while not cleanup_task.done():
+                    try:
+                        await asyncio.shield(cleanup_task)
+                    except asyncio.CancelledError:
+                        if cleanup_task.done():
+                            break
+                await cleanup_task
+            except asyncio.TimeoutError as error:
+                raise IsolationUnavailable("Runner container cleanup exceeded 10 seconds") from error
 
 
 async def _reclaim_container(process: asyncio.subprocess.Process, container_id_file: Path) -> None:
