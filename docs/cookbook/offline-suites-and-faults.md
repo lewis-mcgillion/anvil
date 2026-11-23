@@ -10,6 +10,12 @@ PYTHONPATH=server python -m pytest -q server/tests/test_suites.py \
   server/tests/test_replay_fixtures.py
 ```
 
+On the current Python implementation this targeted group contains 265 tests.
+The command needs the declared server test dependencies, including `rfc8785`,
+installed in the same Python environment. It validates the offline compiler,
+assertions, fault engine and fixture behavior; it does not invoke the
+unimplemented suite scheduler or isolated runner.
+
 Scenarios exercised by these tests:
 
 - Changed model prompt or tool arguments: strict fixture mismatch aborts
@@ -31,3 +37,6 @@ fixture sessions must be closed and discarded, never reused to claim a pass.
 Full `anvil test run` workflows and CI gate/report examples remain dependent
 on #69/#70/#71. The current parser/assertion examples validate without
 executing current agent code, so they are not substitutes for a real suite run.
+In particular, `fixtures/suites/recording.json` is an opaque checksum fixture,
+not an imported sealed recording. Do not treat passing parser tests as evidence
+that an agent recording can be replayed in production.
