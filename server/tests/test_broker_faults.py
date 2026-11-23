@@ -83,3 +83,54 @@ async def test_retry_after_waits_before_single_paid_dispatch():
     assert result == "ok"
     assert events == [("wait", 12), "dispatch"]
     assert (evidence.pre_dispatch_calls, evidence.dispatched_calls, evidence.charged_calls) == (2, 1, 1)
+
+
+@pytest.mark.asyncio
+async def test_cancellation_during_pre_dispatch_delay_never_calls_provider():
+    import asyncio
+
+    started = asyncio.Event()
+    called = []
+
+    async def delay(seconds):
+        started.set()
+        await asyncio.Future()
+
+    async def provider():
+        called.append(True)
+
+    task = asyncio.create_task(execute_broker_fault(
+        BrokerFault("delay", delay_ms=500), provider, sleep=delay,
+    ))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert called == []
+
+
+@pytest.mark.asyncio
+async def test_cancellation_during_paid_dispatch_never_retries():
+    import asyncio
+
+    started = asyncio.Event()
+    stopped = asyncio.Event()
+    calls = []
+
+    async def provider():
+        calls.append("dispatch")
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            stopped.set()
+
+    task = asyncio.create_task(execute_broker_fault(
+        BrokerFault("disconnect"), provider, after_dispatch=True,
+    ))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert stopped.is_set()
+    assert calls == ["dispatch"]
