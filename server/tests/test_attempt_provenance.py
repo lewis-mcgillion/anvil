@@ -1,6 +1,6 @@
 import pytest
 
-from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt
+from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt
 
 
 def sample():
@@ -25,3 +25,44 @@ def test_incomplete_or_unsafe_candidate_is_rejected(key, value):
     attempt[key] = value
     with pytest.raises(InvalidAttempt):
         validate_attempt(attempt)
+
+
+@pytest.mark.asyncio
+async def test_attempt_seals_success_and_runner_failure():
+    sealed = []
+
+    async def seal(evidence):
+        sealed.append(evidence)
+
+    async def success():
+        return None
+
+    async def failure():
+        raise RuntimeError("sensitive internals")
+
+    assert (await execute_attempt(sample(), success, seal))["outcome"] == "succeeded"
+    assert (await execute_attempt(sample(), failure, seal))["failure_code"] == "runner_error"
+    assert len(sealed) == 2
+    assert "sensitive internals" not in str(sealed)
+
+
+@pytest.mark.asyncio
+async def test_attempt_seals_cancellation():
+    import asyncio
+
+    started = asyncio.Event()
+    sealed = []
+
+    async def run():
+        started.set()
+        await asyncio.Future()
+
+    async def seal(evidence):
+        sealed.append(evidence)
+
+    task = asyncio.create_task(execute_attempt(sample(), run, seal))
+    await started.wait()
+    task.cancel()
+    evidence = await asyncio.wait_for(task, 1)
+    assert evidence["outcome"] == "cancelled"
+    assert sealed == [evidence]
