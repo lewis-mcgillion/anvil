@@ -1,6 +1,55 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+test("10k-event read-only timeline renders a bounded viewport and seeks", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  const runId = "0199b167-0000-7000-8000-000000000021";
+  let executionCalls = 0;
+  await page.route("**/v1/**", (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() !== "GET") executionCalls++;
+    if (url.pathname.endsWith("/projects")) return route.fulfill({ json: { items: [project], next_cursor: null } });
+    if (url.pathname.endsWith(`/runs/${runId}/events`)) return route.fulfill({ json: {
+      items: Array.from({ length: 10000 }, (_, index) => ({
+        schema_version: "1", event_id: `0199b167-0000-7000-8000-${String(index).padStart(12, "0")}`,
+        run_id: runId, stream_id: project.id, sequence: index, type: "llm.token.chunk",
+        occurred_at: "2026-01-01T12:00:00Z", payload: { text: `Chunk ${index}` },
+      })), next_cursor: null,
+    } });
+    return route.abort();
+  });
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Run ID").fill(runId);
+  await page.getByRole("button", { name: "Inspect run" }).click();
+  await expect(page.getByText("10000 events loaded", { exact: false })).toBeVisible();
+  await expect(page.locator(".event-row")).toHaveCount(24);
+  await page.getByLabel("Seek to event").fill("9999");
+  await expect(page.getByText("Chunk 9998")).toBeVisible();
+  expect(executionCalls).toBe(0);
+});
+
+test("event inspector rejects malformed event pages without displaying them", async ({ page }) => {
+  const project = { id: "0199b167-0000-7000-8000-000000000011", name: "Alpha",
+    retention_days: 30, created_at: "2026-01-01T12:00:00Z" };
+  await page.route("**/v1/projects?*", (route) => route.fulfill({ json: { items: [project], next_cursor: null } }));
+  await page.route("**/v1/runs/*/events?*", (route) => route.fulfill({ json: {
+    items: [{ event_id: project.id, run_id: project.id, stream_id: project.id,
+      type: "run.started", sequence: 0 }], next_cursor: null,
+  } }));
+  await page.goto("/");
+  await page.getByLabel("API key", { exact: true }).fill("test-read-key");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("link", { name: "Alpha", exact: true }).click();
+  await page.getByLabel("Run ID").fill("0199b167-0000-7000-8000-000000000021");
+  await page.getByRole("button", { name: "Inspect run" }).click();
+  await expect(page.getByRole("alert")).toContainText("invalid run event page");
+  await expect(page.locator(".event-row")).toHaveCount(0);
+});
+
 const first = {
   id: "0199b167-0000-7000-8000-000000000011",
   name: "Alpha",

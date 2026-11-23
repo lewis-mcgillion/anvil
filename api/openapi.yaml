@@ -297,6 +297,11 @@ paths:
         - bearerAuth: [runs:read]
       parameters:
         - $ref: '#/components/parameters/RunId'
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Uuid'
         - name: stream_id
           in: query
           schema:

@@ -13,5 +13,9 @@ form { display: grid; gap: .75rem; max-width: 30rem; }
 h1:focus, main:focus { outline: 2px solid #935500; outline-offset: 3px; }
 [role="alert"] { border-left: 4px solid #a12020; padding: 1rem; }
 code { overflow-wrap: anywhere; }
+.event-viewport { height: 420px; overflow-y: auto; border: 1px solid #53667c; }
+.event-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: 100%; border-radius: 0; text-align: left; }
+.event-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+pre { overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .skip-link { position: absolute; left: 1rem; top: -5rem; padding: .5rem; background: white; z-index: 1; }
 .skip-link:focus { top: .5rem; }

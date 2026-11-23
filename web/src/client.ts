@@ -2,6 +2,22 @@ import createClient from "openapi-fetch";
 import type { components, paths } from "./api-types";
 
 export type Project = components["schemas"]["Project"];
+export type CaptureEvent = components["schemas"]["Event"];
+
+export async function listRunEvents(client: ReturnType<typeof dashboardClient>, signal: AbortSignal,
+                                    projectId: string, runId: string, cursor?: string) {
+  const { data } = await client.GET("/runs/{run_id}/events", {
+    params: { path: { run_id: runId }, query: { project_id: projectId, limit: 500, ...(cursor ? { cursor } : {}) } }, signal,
+  });
+  if (!data || !Array.isArray(data.items) ||
+      !(data.next_cursor === null || (typeof data.next_cursor === "string" && data.next_cursor.length > 0)) ||
+      data.items.some((event) => event.run_id !== runId || !event.event_id || !event.stream_id ||
+        !Number.isInteger(event.sequence) || event.sequence < 0 || typeof event.type !== "string") ||
+      new Set(data.items.map((event) => event.event_id)).size !== data.items.length) {
+    throw new Error("The API returned an invalid run event page.");
+  }
+  return data;
+}
 
 export class ApiError extends Error {
   constructor(

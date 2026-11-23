@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ApiError, dashboardClient, listProjects, type Project } from "./client";
+import { ApiError, dashboardClient, listProjects, listRunEvents, type CaptureEvent, type Project } from "./client";
+import { timelineWindow } from "./timeline-window";
 import "./style.css";
 
 class ErrorBoundary extends React.Component<React.PropsWithChildren, { failed: boolean }> {
@@ -42,17 +43,78 @@ function Page({ title, children }: React.PropsWithChildren<{ title: string }>) {
   return <><h1 ref={heading} tabIndex={-1}>{title}</h1>{children}</>;
 }
 
-function ProjectOverview({ projects }: { projects: Project[] }) {
+function EventInspector({ client, projectId, runId }: { client: ReturnType<typeof dashboardClient>; projectId: string; runId: string }) {
+  const [events, setEvents] = useState<CaptureEvent[]>([]);
+  const [cursor, setCursor] = useState<string>();
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [error, setError] = useState<string>();
+  const [loading, setLoading] = useState(false);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [selected, setSelected] = useState<string>();
+  const viewport = useRef<HTMLDivElement>(null);
+  const rowHeight = 56;
+  const windowed = timelineWindow(events.length, scrollTop, rowHeight, 420);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(undefined);
+    listRunEvents(client, controller.signal, projectId, runId, cursor).then((page) => {
+      if (controller.signal.aborted) return;
+      setEvents((previous) => cursor ? [...previous, ...page.items.filter((event) =>
+        !previous.some((item) => item.event_id === event.event_id))] : page.items);
+      setNextCursor(page.next_cursor);
+    }).catch((failure: unknown) => {
+      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Events unavailable");
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [client, projectId, runId, cursor]);
+  const active = events.find((event) => event.event_id === selected);
+  return <section aria-label="Read-only event inspector">
+    <p>Events are read-only. Playback and seeking never execute agents, models or tools.</p>
+    <label>Seek to event <input type="number" min={1} max={events.length} placeholder="Event number"
+      onChange={(event) => {
+        const position = Number(event.target.value) - 1;
+        if (Number.isInteger(position) && position >= 0 && position < events.length) {
+          viewport.current?.scrollTo({ top: position * rowHeight });
+          setScrollTop(position * rowHeight);
+          setSelected(events[position].event_id);
+        }
+      }} /></label>
+    {error && <p role="alert">{error}</p>}
+    {loading && <p role="status">Loading events...</p>}
+    <div ref={viewport} className="event-viewport" onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
+      <div style={{ height: windowed.paddingTop }} />
+      {events.slice(windowed.start, windowed.end).map((event) => <button key={event.event_id}
+        className="event-row" style={{ height: rowHeight }} onClick={() => setSelected(event.event_id)}>
+        <span>{event.sequence}: {event.type}</span> <small>Stream {event.stream_id}</small>
+      </button>)}
+      <div style={{ height: windowed.paddingBottom }} />
+    </div>
+    <p>{events.length} events loaded{nextCursor ? "; more available" : ""}.</p>
+    {nextCursor && <button disabled={loading} onClick={() => setCursor(nextCursor)}>Load more events</button>}
+    {active && <section><h3>Event payload</h3><p>Event ID: <code>{active.event_id}</code></p>
+      <p>Parent events: {active.parent_event_ids?.join(", ") || "None"}</p>
+      <pre>{JSON.stringify(active.payload, null, 2)}</pre></section>}
+  </section>;
+}
+
+function ProjectOverview({ projects, client }: { projects: Project[]; client: ReturnType<typeof dashboardClient> }) {
   const { projectId } = useParams();
   const project = projects.find((item) => item.id === projectId);
+  const [runId, setRunId] = useState("");
+  const [selectedRun, setSelectedRun] = useState("");
   if (!project) {
     return <Page title="Project unavailable"><p>This project is not in the loaded authorized project list. Load additional projects or choose a visible project.</p><Link to="/">Choose a project</Link></Page>;
   }
   return <Page title={project.name}>
     <p>Project ID: <code>{project.id}</code></p>
     <p>Retention: {project.retention_days} days</p>
-    <h2>Investigation capabilities</h2>
-    <p>Run explorer and playback are not available in this dashboard yet. The Python server must implement the published run-list, event-stream and recording-projection contracts first.</p>
+    <h2>Event inspector</h2>
+    <form onSubmit={(event) => { event.preventDefault(); setSelectedRun(runId); }}>
+      <label>Run ID <input required pattern="[0-9a-fA-F-]{36}" value={runId} onChange={(event) => setRunId(event.target.value)} /></label>
+      <button type="submit">Inspect run</button>
+    </form>
+    {selectedRun && <EventInspector key={selectedRun} client={client} projectId={project.id} runId={selectedRun} />}
     <p>No capture completeness, execution outcome or replay eligibility is inferred from missing evidence. This page never schedules execution.</p>
   </Page>;
 }
@@ -124,7 +186,7 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: (message?: 
         <Route path="/" element={<Page title="Projects">
           {projects.length === 0 ? <p>No projects are visible to this key. Ask an administrator for a project grant.</p> : <ul>{projects.map((project) => <li key={project.id}><Link to={`/projects/${project.id}`}>{project.name}</Link></li>)}</ul>}
         </Page>} />
-        <Route path="/projects/:projectId" element={<ProjectOverview projects={projects} />} />
+        <Route path="/projects/:projectId" element={<ProjectOverview projects={projects} client={client} />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Page title="Page not found"><Link to="/">Return to projects</Link></Page>} />
       </Routes>}
