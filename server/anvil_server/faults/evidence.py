@@ -1,6 +1,12 @@
 """Project fault execution evidence into explicit, replay-ineligible event payloads."""
 
+import json
 from uuid import UUID
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from anvil_server.database import project_connection
 
 from .engine import Evidence, FaultReport
 
@@ -36,3 +42,18 @@ def fault_report_payload(report: FaultReport) -> dict:
         "all_faults_applied": report.all_faults_applied,
         "report_sha256": report.digest,
     }
+
+
+async def persist_fault_report(engine: AsyncEngine, project_id: UUID, run_id: UUID,
+                               report_id: UUID, report: FaultReport) -> None:
+    if any(not isinstance(identifier, UUID) or identifier.version != 7
+           for identifier in (project_id, run_id, report_id)):
+        raise ValueError("Fault report requires project, run and report UUIDv7 identities")
+    payload = fault_report_payload(report)
+    async with project_connection(engine, project_id) as connection:
+        await connection.execute(text("""
+            INSERT INTO fault_reports (id, project_id, run_id, report, report_digest)
+            VALUES (:id, :project, :run, CAST(:report AS jsonb), :digest)
+            ON CONFLICT (project_id, run_id, report_digest) DO NOTHING
+        """), {"id": report_id, "project": project_id, "run": run_id,
+               "report": json.dumps(payload, sort_keys=True), "digest": report.digest})
