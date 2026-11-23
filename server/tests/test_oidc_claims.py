@@ -24,7 +24,15 @@ def test_project_claim_accepts_matching_issuer_audience_and_expiry():
 
 @pytest.mark.parametrize("change", [{"iss": "https://evil.example.com"}, {"aud": ["other"]},
                                      {"project_id": "project-b"}, {"exp": int(NOW.timestamp())},
-                                     {"sub": ""}])
+                                     {"sub": ""}, {"nbf": int(NOW.timestamp()) + 1},
+                                     {"iat": int(NOW.timestamp()) + 1}, {"nbf": "future"},
+                                     {"iat": True}, {"sub": "   "}, {"aud": []}])
 def test_cross_project_expired_or_untrusted_claim_denied(change):
     with pytest.raises(IdentityDenied):
         check(claims() | change)
+
+
+def test_non_https_issuer_configuration_denied():
+    with pytest.raises(IdentityDenied):
+        validate_project_claims(claims(), issuer="http://identity.example.com",
+                                audience="anvil-api", project_id="project-a", now=NOW)

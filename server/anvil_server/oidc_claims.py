@@ -14,10 +14,14 @@ def validate_project_claims(claims: Mapping[str, object], *, issuer: str,
     permitted_audiences = claims.get("aud")
     if type(permitted_audiences) is str:
         permitted_audiences = [permitted_audiences]
-    if (claims.get("iss") != issuer or type(permitted_audiences) is not list
+    if (not issuer.startswith("https://") or not audience or not project_id
+            or claims.get("iss") != issuer or type(permitted_audiences) is not list
             or audience not in permitted_audiences or any(type(item) is not str for item in permitted_audiences)
+            or not permitted_audiences
             or type(claims.get("exp")) is not int or claims["exp"] <= current.timestamp()
+            or ("nbf" in claims and (type(claims["nbf"]) is not int or claims["nbf"] > current.timestamp()))
+            or ("iat" in claims and (type(claims["iat"]) is not int or claims["iat"] > current.timestamp()))
             or claims.get("project_id") != project_id
-            or type(claims.get("sub")) is not str or not claims["sub"]):
+            or type(claims.get("sub")) is not str or not claims["sub"].strip()):
         raise IdentityDenied("Untrusted or expired project identity")
     return claims["sub"]
