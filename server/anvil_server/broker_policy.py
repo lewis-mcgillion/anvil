@@ -69,8 +69,12 @@ def admit_live_model(*, mode: str, approved: bool, profile_endpoint: str,
                      requested_endpoint: str, budget: LiveBudget) -> None:
     if mode != "live" or approved is not True:
         raise BrokerDenied("Live inference requires explicit approved opt-in")
-    parsed = urlsplit(profile_endpoint)
-    requested = urlsplit(requested_endpoint)
+    try:
+        parsed = urlsplit(profile_endpoint)
+        requested = urlsplit(requested_endpoint)
+        port = parsed.port
+    except ValueError as error:
+        raise BrokerDenied("Model endpoint URL is invalid") from error
     try:
         address = ipaddress.ip_address(parsed.hostname or "")
     except ValueError:
@@ -79,7 +83,9 @@ def admit_live_model(*, mode: str, approved: bool, profile_endpoint: str,
             or parsed.fragment or parsed.query or not parsed.path.startswith("/")
             or requested != parsed or parsed.hostname.endswith((".local", ".localhost", ".internal"))
             or parsed.hostname in {"localhost", "metadata.google.internal"}
-            or address is not None or parsed.port not in (None, 443)):
+            or address is not None or port not in (None, 443)
+            or "\\" in profile_endpoint or any(ord(character) < 33 for character in profile_endpoint)
+            or parsed.hostname.endswith(".") or "%" in parsed.netloc):
         raise BrokerDenied("Model endpoint is not an approved HTTPS profile endpoint")
     budget.validate()
 
