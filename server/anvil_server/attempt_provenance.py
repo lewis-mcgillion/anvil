@@ -9,6 +9,12 @@ import json
 import time
 from collections.abc import Mapping
 from collections.abc import Awaitable, Callable
+from uuid import UUID
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from .database import project_connection
 
 
 class InvalidAttempt(ValueError):
@@ -26,6 +32,21 @@ def verify_evidence(evidence: Mapping[str, object]) -> bool:
     except (TypeError, ValueError):
         return False
     return hashlib.sha256(canonical).hexdigest() == digest
+
+
+async def persist_evidence(engine: AsyncEngine, project_id: UUID, job_id: UUID,
+                           evidence_id: UUID, evidence: Mapping[str, object]) -> None:
+    if not verify_evidence(evidence):
+        raise InvalidAttempt("Candidate evidence checksum is invalid")
+    if not all(isinstance(identifier, UUID) for identifier in (project_id, job_id, evidence_id)):
+        raise InvalidAttempt("Candidate evidence requires UUID identities")
+    serialized = json.dumps(evidence, sort_keys=True, allow_nan=False)
+    async with project_connection(engine, project_id) as connection:
+        await connection.execute(text("""
+            INSERT INTO attempt_evidence (id, project_id, job_id, evidence, digest)
+            VALUES (:id, :project, :job, CAST(:evidence AS jsonb), :digest)
+        """), {"id": evidence_id, "project": project_id, "job": job_id,
+               "evidence": serialized, "digest": evidence["sha256"]})
 
 
 _DIGEST = re.compile(r"[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}")

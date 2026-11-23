@@ -1,6 +1,6 @@
 import pytest
 
-from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt, verify_evidence
+from anvil_server.attempt_provenance import InvalidAttempt, validate_attempt, execute_attempt, verify_evidence, persist_evidence
 
 
 def sample():
@@ -117,3 +117,13 @@ async def test_attempt_timeout_seals_failure_evidence(monkeypatch):
     evidence = await asyncio.wait_for(execute_attempt(attempt, run, seal), 2)
     assert evidence["outcome"] == "timed_out"
     assert sealed == [evidence]
+
+
+@pytest.mark.asyncio
+async def test_persistence_rejects_corrupt_evidence_before_database_access():
+    from uuid import UUID
+
+    identifier = UUID("0199b167-0000-7000-8000-000000000011")
+    with pytest.raises(InvalidAttempt, match="checksum"):
+        await persist_evidence(None, identifier, identifier, identifier,
+                               {"outcome": "succeeded", "sha256": "0" * 64})
