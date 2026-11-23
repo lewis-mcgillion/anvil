@@ -9,14 +9,16 @@ APPROVED = frozenset({"Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC"
 
 
 def check_inventory(inventory: list[dict]) -> None:
-    if type(inventory) is not list:
-        raise ValueError("Expected dependency inventory list")
+    if type(inventory) is not list or not inventory:
+        raise ValueError("Expected nonempty dependency inventory list")
     seen = set()
     for dependency in inventory:
         if (type(dependency) is not dict or type(dependency.get("name")) is not str
                 or not dependency["name"].strip() or type(dependency.get("license")) is not str
                 or dependency["license"] not in APPROVED):
             raise ValueError("Dependency has missing or unapproved license")
+        if dependency["name"] != dependency["name"].strip():
+            raise ValueError("Dependency has invalid identity")
         identity = (dependency["name"].casefold(), dependency.get("version"))
         if identity in seen or ("version" in dependency and
                                 (type(dependency["version"]) is not str or not dependency["version"].strip())):
