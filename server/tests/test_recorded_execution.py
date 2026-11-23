@@ -121,6 +121,26 @@ async def test_recorded_agent_timeout_closes_session():
 
 
 @pytest.mark.asyncio
+async def test_recorded_timeout_records_cancelled_session():
+    session = FixtureSession([])
+    cancelled = []
+    original_cancel = session.cancel
+
+    def cancel():
+        cancelled.append(True)
+        original_cancel()
+
+    session.cancel = cancel
+
+    async def agent(fixtures):
+        await asyncio.Future()
+
+    with pytest.raises(TimeoutError):
+        await execute_recorded_session(session, agent, timeout_seconds=0.001)
+    assert cancelled == [True]
+
+
+@pytest.mark.asyncio
 async def test_invalid_timeout_never_leaves_replay_session_open():
     session = FixtureSession([])
 
