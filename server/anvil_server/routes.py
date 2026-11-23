@@ -816,6 +816,8 @@ async def watch_run(request: Request, project_id: UUID, run_id: UUID):
     resume_id = request.headers.get("Last-Event-ID")
     try:
         resume_uuid = UUID(resume_id) if resume_id else None
+        if resume_uuid is not None and resume_uuid.version != 7:
+            raise ValueError("Invalid resume event identity")
     except ValueError:
         return failure(request, 400, "invalid_request")
     async with project_connection(engine, project_id) as connection:
