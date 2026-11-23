@@ -27,7 +27,8 @@ test("project runs filter by agent identity and capture state", async ({ page })
   await page.route("**/v1/runs?*", (route) => route.fulfill({ json: {
     items: [
       { id: runId, project_id: first.id, agent_name: "Inventory",
-        capture_state: "sealed_complete", execution_state: "succeeded" },
+        capture_state: "sealed_complete", execution_state: "succeeded",
+        recording_id: "0199b167-0000-7000-8000-000000000031" },
       { id: "0199b167-0000-7000-8000-000000000022", project_id: first.id,
         agent_name: "Billing", capture_state: "open", execution_state: "running" },
     ], next_cursor: null,
@@ -38,6 +39,7 @@ test("project runs filter by agent identity and capture state", async ({ page })
   await expect(page.getByText("Inventory", { exact: true })).toBeVisible();
   await expect(page.getByText("Billing", { exact: true })).toBeVisible();
   await expect(page.getByRole("note")).toContainText("Replay eligibility is not verified");
+  await expect(page.getByText("Recording:", { exact: false })).toContainText("eligibility unverified");
   await page.getByLabel("Filter runs by agent or ID").fill("inventory");
   await expect(page.getByText("Billing", { exact: true })).toHaveCount(0);
   await page.getByLabel("Filter runs by agent or ID").fill("");
