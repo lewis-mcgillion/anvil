@@ -89,3 +89,31 @@ async def test_fault_report_read_rejects_digest_mismatch(monkeypatch):
     monkeypatch.setattr("anvil_server.faults.evidence.project_connection", connection)
     with pytest.raises(ValueError, match="metadata"):
         await load_fault_report(None, *(new_uuid7() for _ in range(3)))
+
+
+@pytest.mark.asyncio
+async def test_fault_report_read_rejects_conflicting_fault_ids(monkeypatch):
+    from contextlib import asynccontextmanager
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def first(self):
+            return {"report": {"report_sha256": "a" * 64,
+                               "applied_fault_ids": ["same"],
+                               "unreached_fault_ids": ["same"],
+                               "all_faults_applied": False},
+                    "report_digest": "a" * 64}
+
+    class Connection:
+        async def execute(self, *args):
+            return Result()
+
+    @asynccontextmanager
+    async def connection(engine, project):
+        yield Connection()
+
+    monkeypatch.setattr("anvil_server.faults.evidence.project_connection", connection)
+    with pytest.raises(ValueError, match="inconsistent"):
+        await load_fault_report(None, *(new_uuid7() for _ in range(3)))

@@ -82,4 +82,11 @@ async def load_fault_report(engine: AsyncEngine, project_id: UUID, run_id: UUID,
             or not isinstance(report.get("applied_fault_ids"), list)
             or not isinstance(report.get("unreached_fault_ids"), list)):
         raise ValueError("Stored fault report metadata is invalid")
+    applied = report["applied_fault_ids"]
+    unreached = report["unreached_fault_ids"]
+    if (any(type(identifier) is not str or not identifier for identifier in applied + unreached)
+            or len(set(applied + unreached)) != len(applied) + len(unreached)
+            or type(report.get("all_faults_applied")) is not bool
+            or (unreached and report["all_faults_applied"])):
+        raise ValueError("Stored fault report evidence is inconsistent")
     return report
