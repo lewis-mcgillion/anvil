@@ -26,6 +26,16 @@ def test_project_graph_deletion_and_quota():
     assert manager.usage("two") == 10
 
 
+def test_storage_quota_rejects_boolean_and_fractional_byte_counts():
+    manager = RetentionManager(lambda: NOW)
+    for value in (True, 1.5, -1):
+        with pytest.raises(ValueError):
+            manager.set_quota("one", value)
+        with pytest.raises(ValueError):
+            manager.put(Resource("invalid", "one", "run", value))
+    assert manager.usage("one") == 0
+
+
 def test_retention_and_backups_are_separate():
     manager = RetentionManager(lambda: NOW)
     old = NOW - timedelta(days=40)

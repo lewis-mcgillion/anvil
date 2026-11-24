@@ -3,7 +3,8 @@ from uuid import UUID
 
 import pytest
 
-from anvil_server.events import Conflict, Event, event_hash, validate_batch
+from anvil_server.events import (Conflict, Event, MAX_BATCH_EVENTS, MAX_EVENT_BYTES,
+                                 event_hash, validate_batch)
 
 
 RUN = UUID("0199b167-0000-7000-8000-000000000021")
@@ -31,3 +32,16 @@ def test_batch_duplicate_rejected():
 def test_batch_wrong_stream_rejected():
     with pytest.raises(Conflict):
         validate_batch(RUN, UUID("0199b167-0000-7000-8000-000000000032"), [sample()])
+
+
+def test_batch_size_limits_reject_before_database_access():
+    with pytest.raises(ValueError, match="batch size"):
+        validate_batch(RUN, STREAM, [])
+    with pytest.raises(ValueError, match="batch size"):
+        validate_batch(RUN, STREAM, [sample()] * (MAX_BATCH_EVENTS + 1))
+
+
+def test_single_oversized_event_rejected_before_database_access():
+    oversized = sample().model_copy(update={"payload": {"text": "x" * MAX_EVENT_BYTES}})
+    with pytest.raises(ValueError, match="ingest limit"):
+        validate_batch(RUN, STREAM, [oversized])
