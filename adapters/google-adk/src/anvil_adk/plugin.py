@@ -119,9 +119,13 @@ class CapturePlugin(BasePlugin):
             raise Ineligible("overlapping model calls have an ambiguous causal identity")
         self._models[key] = llm_request.model or "unknown"
         self._chunks[key] = 0
-        self._emit("model.requested", {
-            "model": self._models[key], "request": request_body(llm_request),
-        }, callback_context)
+        try:
+            self._emit("model.requested", {
+                "model": self._models[key], "request": request_body(llm_request),
+            }, callback_context)
+        except BaseException:
+            self._clear_call(key)
+            raise
 
     async def after_model_callback(
         self, *, callback_context: CallbackContext, llm_response: LlmResponse,
@@ -133,20 +137,23 @@ class CapturePlugin(BasePlugin):
             self._chunks[key] = index + 1
             self._emit("model.chunk", {"chunk_index": index, "chunk": response}, callback_context)
         else:
-            self._emit("model.completed", {
-                "model": self._models[key], "response": response,
-            }, callback_context)
-            del self._models[key]
-            del self._chunks[key]
+            try:
+                self._emit("model.completed", {
+                    "model": self._models[key], "response": response,
+                }, callback_context)
+            finally:
+                self._clear_call(key)
 
     async def on_model_error_callback(
         self, *, callback_context: CallbackContext, llm_request: LlmRequest, error: Exception,
     ) -> None:
-        self._emit("model.failed", {
-            "model": llm_request.model or "unknown",
-            "error": {"type": type(error).__name__, "message": str(error)},
-        }, callback_context)
-        self._clear_call(self._key(callback_context))
+        try:
+            self._emit("model.failed", {
+                "model": llm_request.model or "unknown",
+                "error": {"type": type(error).__name__, "message": str(error)},
+            }, callback_context)
+        finally:
+            self._clear_call(self._key(callback_context))
 
     async def before_tool_callback(
         self, *, tool: BaseTool, tool_args: dict[str, Any], tool_context: ToolContext,
