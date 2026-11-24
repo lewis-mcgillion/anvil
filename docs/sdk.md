@@ -136,6 +136,70 @@ cancel its bounded cleanup thread or the exporter; close the client later
 if its lifetime continues. Cancelling in-flight run creation cannot undo
 server creation: no context activates, but an open server run may remain.
 
+## Optional crash-recovery spool
+
+The exporter holds events in memory, so a process that dies takes its
+unexported evidence with it. The spool is the optional answer: a small
+on-disk queue that survives the crash and can be drained by the next process.
+
+```python
+client = AnvilClient(
+    project_id=project,
+    spool=SpoolConfig(directory=Path("~/.anvil/spool").expanduser()),
+)
+```
+
+Writing capture evidence to disk is a privacy decision, not a reliability
+one, so it is **off unless asked for** — there is no default directory — and
+it is constrained in four ways.
+
+**Only redacted events are written.** Every payload that has been through the
+redaction policy carries a `redactions` list and a `replay_safe` flag; a
+record without them is refused. The check is structural, so a raw payload
+cannot reach the disk even by mistake.
+
+**The spool is private.** The directory is `0o700` and records are `0o600`. A
+directory that is a symlink, is not a directory, or is accessible to other
+users is refused rather than tightened: something else created it, and
+silently taking it over is how one process writes its evidence into
+another's.
+
+**It is bounded.** Records, bytes and individual record size are capped, and a
+full spool refuses new records rather than evicting old ones. A spool that
+evicts is a spool that decides which evidence to lose. A refusal is counted
+and reported through `SpoolStatus.incomplete`.
+
+**It expires.** A record older than `max_age_seconds` (a day by default) is
+deleted unread. Capture evidence nobody recovered is not worth keeping on a
+laptop indefinitely.
+
+### Corruption
+
+Corruption is expected, because the interesting case is a process killed
+mid-write. Each record is one line carrying the SHA-256 of its own event
+bytes, so a truncated tail, a missing newline, a tampered field or a record
+from another spool version all fail and the record is dropped. A corrupt
+record is counted and deleted; it is never yielded, never retried and never
+quoted in an error message, because the bytes that failed to parse are
+exactly the bytes nobody has validated. One corrupt record does not hide the
+intact ones around it.
+
+### Errors, cancellation and cleanup
+
+Writes go to a temporary file, are `fsync`-ed and renamed into place, so a
+crash leaves either a complete record or a `.partial` file that recovery
+deletes. `Spool.drain(transport)` re-sends recovered records grouped per run
+and deletes each only after the server acknowledges it, so a crash mid-drain
+re-sends rather than loses — the idempotency key makes that safe. A drain
+stops at the first transport failure and leaves everything it has not
+confirmed.
+
+A spool failure never becomes a capture failure: the exporter's hand-off is
+best effort, because the event is already lost from the server's point of
+view and raising there would replace a recorded gap with an exception.
+Spooling an event does **not** remove its `capture.gap`: the server has not
+accepted it, and may never be given it.
+
 ## Compatibility, packaging and verification
 
 The distribution name/version (`anvil-schema` 1.0.0) and SDK
