@@ -931,6 +931,9 @@ async def request_deletion(request: Request, project_id: UUID, payload: Deletion
             if previous["request_hash"] != digest:
                 return failure(request, 409, "conflict")
             return previous["response"]
+        await connection.execute(text("""
+            SELECT pg_advisory_xact_lock(hashtextextended(:lock, 0))
+        """), {"lock": f"deletion:{project_id}:{payload.target_kind}:{payload.target_id}"})
         exists = (await connection.execute(text(f"""
             SELECT id FROM {table} WHERE project_id = :project AND id = :target
         """), {"project": project_id, "target": payload.target_id})).scalar_one_or_none()

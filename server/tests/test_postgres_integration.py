@@ -1133,6 +1133,45 @@ async def test_a_retried_deletion_does_not_delete_or_audit_twice(engine):
 
 
 @pytest.mark.asyncio
+async def test_concurrent_deletion_requests_share_one_job(engine):
+    recording_id = await _sealed_baseline(engine, {"sku": "concurrent-delete"})
+    token = await _key(engine, ["admin"])
+    app.state.engine = engine
+    url = f"/v1/projects/{PROJECT}/deletions"
+    payload = {"target_kind": "recording", "target_id": str(recording_id)}
+    headers = {"Authorization": f"Bearer {token}"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        responses = await asyncio.gather(*(
+            client.post(url, json=payload,
+                        headers={**headers, "Idempotency-Key": str(new_uuid7())})
+            for _ in range(2)))
+    assert [response.status_code for response in responses] == [202, 202]
+    assert responses[0].json()["job_id"] == responses[1].json()["job_id"]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_deletion_idempotency_key_rejects_conflicting_target(engine):
+    first_id = await _sealed_baseline(engine, {"sku": "delete-first"})
+    second_id = await _sealed_baseline(engine, {"sku": "delete-second"})
+    token = await _key(engine, ["admin"])
+    app.state.engine = engine
+    url = f"/v1/projects/{PROJECT}/deletions"
+    headers = {"Authorization": f"Bearer {token}", "Idempotency-Key": str(new_uuid7())}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        responses = await asyncio.gather(*(
+            client.post(url, json={"target_kind": "recording", "target_id": str(target_id)},
+                        headers=headers)
+            for target_id in (first_id, second_id)))
+    assert sorted(response.status_code for response in responses) == [202, 409]
+    async with project_connection(engine, PROJECT) as connection:
+        count = (await connection.execute(text("""
+            SELECT count(*) FROM deletion_requests WHERE project_id = :project
+              AND target_id IN (:first, :second)
+        """), {"project": PROJECT, "first": first_id, "second": second_id})).scalar_one()
+    assert count == 1
+
+
+@pytest.mark.asyncio
 async def test_immutable_rows_can_only_be_deleted_by_a_declared_deletion(engine):
     """ANVIL-071: the deletion exception is narrow, and nothing else widens it.
 
