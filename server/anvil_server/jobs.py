@@ -21,7 +21,7 @@ class JobQueue:
         self.lease_duration = lease_duration
 
     async def create(self, project_id: UUID, job_id: UUID, kind: str, max_attempts: int = 3) -> None:
-        if max_attempts < 1:
+        if type(max_attempts) is not int or not 1 <= max_attempts <= 100:
             raise ValueError("Invalid retry limit")
         async with project_connection(self.engine, project_id) as connection:
             await connection.execute(text("""
@@ -57,7 +57,9 @@ class JobQueue:
                   error = NULL, finished_at = NULL
                 WHERE id = (
                   SELECT id FROM jobs WHERE project_id = :project AND kind = :kind
-                  AND attempts < max_attempts AND status = 'queued'
+                  AND attempts < max_attempts
+                  AND (status = 'queued' OR (status = 'running'
+                    AND lease_expires_at < clock_timestamp()))
                   ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
                 ) RETURNING id, status, attempts
             """), {"project": project_id, "token": lease_token, "kind": kind,

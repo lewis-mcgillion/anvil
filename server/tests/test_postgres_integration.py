@@ -207,6 +207,25 @@ async def test_kind_specific_job_claim(engine):
 
 
 @pytest.mark.asyncio
+async def test_kind_specific_worker_recovers_expired_lease(engine):
+    queue = JobQueue(engine, timedelta(seconds=30))
+    job_id, first_token, second_token = new_uuid7(), new_uuid7(), new_uuid7()
+    await queue.create(PROJECT, job_id, "seal")
+    assert (await queue.acquire_kind(PROJECT, first_token, "seal"))["id"] == job_id
+    async with project_connection(engine, PROJECT) as connection:
+        await connection.execute(text("""
+            UPDATE jobs SET lease_expires_at = clock_timestamp() - interval '1 second'
+            WHERE project_id = :project AND id = :job
+        """), {"project": PROJECT, "job": job_id})
+    claim = await queue.acquire_kind(PROJECT, second_token, "seal")
+    assert claim["id"] == job_id
+    assert claim["attempts"] == 2
+    with pytest.raises(LeaseLost):
+        await queue.complete(PROJECT, job_id, first_token, "succeeded")
+    await queue.complete(PROJECT, job_id, second_token, "succeeded")
+
+
+@pytest.mark.asyncio
 async def test_expired_cancelled_lease_never_requeues(engine):
     queue = JobQueue(engine, timedelta(seconds=30))
     job_id, token = new_uuid7(), new_uuid7()
