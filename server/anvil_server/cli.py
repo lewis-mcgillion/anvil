@@ -82,6 +82,27 @@ playback_app = typer.Typer(
 app.add_typer(playback_app, name="playback")
 
 
+@app.command("report")
+def report_command(
+    source: pathlib.Path = typer.Argument(..., help="JSON file containing suite cases."),
+    format: str = typer.Option("json", "--format", help="json, junit or markdown"),
+) -> None:
+    """Export a previously computed suite report without running any case."""
+    from .suites.exporters import export_json, export_junit, export_markdown
+
+    exporters = {"json": export_json, "junit": export_junit, "markdown": export_markdown}
+    if format not in exporters:
+        raise CliError("Unsupported suite report format", EXIT_USAGE)
+    data = _read_file(source)
+    cases = data.get("cases")
+    if not isinstance(cases, list):
+        raise CliError("Suite report requires a cases array", EXIT_USAGE)
+    try:
+        sys.stdout.write(exporters[format](cases))
+    except (ValueError, TypeError) as error:
+        raise CliError("Suite report is invalid", EXIT_USAGE) from error
+
+
 def _emit(payload: Mapping[str, Any]) -> None:
     """Write one JSON document to stdout with a trailing newline."""
     json.dump(payload, sys.stdout, indent=2, sort_keys=True)
