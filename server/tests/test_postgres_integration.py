@@ -495,6 +495,10 @@ async def test_multi_stream_pagination_and_seal_guard(engine):
         first = await client.get(url, params={"limit": 1}, headers=headers)
         assert first.status_code == 200, first.text
         assert (await client.get(f"/v1/runs/{run_id}/watch", headers=headers)).status_code == 400
+        invalid_resume = await client.get(
+            f"/v1/projects/{PROJECT}/runs/{run_id}/watch",
+            headers={**headers, "Last-Event-ID": "00000000-0000-4000-8000-000000000001"})
+        assert invalid_resume.status_code == 400
         assert (await client.get(f"/v1/runs/{run_id}/watch", params={"project_id":
             "0199b167-0000-7000-8000-000000000012"}, headers=headers)).status_code == 401
         alias = await client.get(f"/v1/runs/{run_id}/events",
