@@ -34,6 +34,12 @@ All errors use RFC 9457 `application/problem+json`:
 on. `detail` is human-readable, redacted, and may change. `request_id`
 correlates with server logs and audit events.
 
+`/v1/health/live` reports process liveness. `/v1/health/ready` fails with a
+problem response when persistence is unavailable. Requests receive an
+`X-Request-ID` header, including validation and size-limit failures. On
+graceful shutdown, the API disposes its database engine; a cancelled or
+failed request does not skip that lifecycle cleanup.
+
 | HTTP | `code` | Meaning |
 |---|---|---|
 | 400 | `invalid_request` | Unknown field, bad type, invalid enum, malformed cursor, unsafe suite YAML. |

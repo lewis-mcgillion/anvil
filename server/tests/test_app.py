@@ -22,8 +22,7 @@ def test_chunked_request_body_limit():
 
 
 def test_declared_oversized_body_rejected_before_handler():
-    response = client.post("/v1/projects", content=b"{}",
-                           headers={"Content-Length": str(5 * 1024 * 1024)})
+    response = client.post("/v1/projects", content=b"x" * (5 * 1024 * 1024))
     assert response.status_code == 413
     assert response.json()["status"] == 413
     assert response.json()["request_id"] == response.headers["X-Request-ID"]
@@ -33,11 +32,28 @@ def test_archive_import_has_its_own_bounded_request_limit():
     from anvil_server.bundles import MAX_BUNDLE
 
     url = "/v1/projects/0199b167-0000-7000-8000-000000000011/imports:verified"
-    allowed = client.post(url, content=b"{}", headers={"Content-Length": str(8 * 1024 * 1024)})
+    allowed = client.post(url, content=b"x" * (8 * 1024 * 1024))
     assert allowed.status_code != 413
-    oversized = client.post(url, content=b"{}",
-                            headers={"Content-Length": str(MAX_BUNDLE * 2)})
-    assert oversized.status_code == 413
+    from anvil_server.app import BodyLimitMiddleware
+    import asyncio
+
+    async def check_declared_size():
+        messages = []
+
+        async def downstream(scope, receive, send):
+            raise AssertionError("oversized import reached handler")
+
+        async def receive():
+            raise AssertionError("oversized import body was read")
+
+        async def send(message):
+            messages.append(message)
+
+        scope = {"type": "http", "path": url, "headers": [(b"content-length", str(MAX_BUNDLE * 2).encode())]}
+        await BodyLimitMiddleware(downstream)(scope, receive, send)
+        assert messages[0]["status"] == 413
+
+    asyncio.run(check_declared_size())
 
 
 client = TestClient(app)
@@ -54,6 +70,30 @@ def test_ready_fails_closed():
     response = client.get("/v1/health/ready")
     assert response.status_code == 503
     assert response.headers["content-type"] == "application/problem+json"
+
+
+def test_shutdown_disposes_database_engine(monkeypatch):
+    import asyncio
+    from importlib import import_module
+
+    class Engine:
+        disposals = 0
+
+        async def dispose(self):
+            self.disposals += 1
+
+    engine = Engine()
+    monkeypatch.setenv("ANVIL_DATABASE_URL", "postgresql+asyncpg://test/test")
+    app_module = import_module("anvil_server.app")
+    monkeypatch.setattr(app_module, "engine_for", lambda _: engine)
+
+    async def check():
+        async with app_module.lifespan(app):
+            assert app.state.engine is engine
+            assert engine.disposals == 0
+
+    asyncio.run(check())
+    assert engine.disposals == 1
 
 
 def test_mutation_does_not_fake_success():
@@ -76,7 +116,7 @@ def test_python_capture_routes_are_published():
 def test_capture_without_credentials_is_rejected():
     response = client.post("/v1/projects/0199b167-0000-7000-8000-000000000011/runs",
                            json={"agent_name": "test", "adapter": "adk", "adapter_version": "1"})
-    assert response.status_code == 503
+    assert response.status_code == 401
 
 
 def test_unscoped_run_list_is_rejected():
