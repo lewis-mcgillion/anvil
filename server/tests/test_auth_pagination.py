@@ -10,10 +10,18 @@ def test_secret_issuance_and_scopes():
     assert bearer_token("Bearer " + first) == first
     assert allows(["capture:write"], "capture:write")
     assert not allows(["capture:write"], "runs:read")
+    assert not allows(["capture:write"], "replay:write")
+    assert not allows(["capture:write", "runs:read"], "capture:write")
+    assert not allows(["capture:write", "runs:read"], "runs:read")
+    assert not allows(["capture:write", "replay:write"], "replay:write")
     with pytest.raises(ValueError):
         validate_scopes(["capture:write", "replay:write"])
     with pytest.raises(ValueError):
         validate_scopes(["admin", "admin"])
+    for malformed in (None, "admin", [None], [1], [True]):
+        with pytest.raises(ValueError):
+            validate_scopes(malformed)
+        assert not allows(malformed, "admin")
 
 
 def test_signed_cursor_is_scoped_and_tamper_evident():

@@ -6,7 +6,7 @@ from fastapi import Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from .auth import bearer_token, key_hash
+from .auth import bearer_token, key_hash, allows
 from .database import project_connection
 
 
@@ -31,5 +31,5 @@ async def authorize(engine: AsyncEngine, request: Request, project_id: UUID, req
         """), {"project": project_id, "hash": key_hash(token)})).first()
     if row is None:
         raise Unauthenticated("Missing or invalid credentials")
-    if required not in row.scopes:
+    if not allows(row.scopes, required):
         raise AccessDenied("Permission denied")

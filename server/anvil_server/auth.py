@@ -23,6 +23,8 @@ def bearer_token(header: str | None) -> str:
 
 
 def validate_scopes(scopes: list[str]) -> frozenset[str]:
+    if type(scopes) is not list or any(type(scope) is not str for scope in scopes):
+        raise ValueError("Invalid scope list")
     unique = frozenset(scopes)
     if not unique or len(unique) != len(scopes) or not unique <= SCOPES:
         raise ValueError("Invalid or duplicate scope")

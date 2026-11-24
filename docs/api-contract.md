@@ -72,6 +72,11 @@ key hash is stored; the secret is returned once at creation.
 
 Capture keys are intentionally write-only so a compromised agent host
 cannot exfiltrate recordings or trigger execution.
+The server validates the entire stored scope set on every authorization,
+rejecting invalid or mixed capture/read permissions even if a credential
+was provisioned outside the API. Revoked and expired keys cannot authorize
+requests. Rotation consists of creating a replacement key and then revoking
+the old key; secrets are only returned when created.
 
 ## Retries and throttling
 
